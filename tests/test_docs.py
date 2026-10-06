@@ -77,6 +77,10 @@ def link_error(filename, line, target, release_check=None):
 
 
 @pytest.mark.parametrize("filename", DOCS)
+@pytest.mark.skipif(
+    not (ROOT / "scripts/release_check.py").exists(),
+    reason="scripts/release_check.py is absent from the public export",
+)
 def test_public_document_links(filename, release_check):
     source = (ROOT / filename).read_text(encoding="utf-8")
     links = References(source).links

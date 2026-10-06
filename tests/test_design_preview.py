@@ -4,6 +4,11 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.skipif(
+    not (Path(__file__).resolve().parents[1] / "scripts/design-preview.py").exists(),
+    reason="scripts/design-preview.py is absent from the public export",
+)
+
 
 def preview():
     path = Path(__file__).resolve().parents[1] / "scripts/design-preview.py"

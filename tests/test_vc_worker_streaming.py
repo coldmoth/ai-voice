@@ -174,6 +174,10 @@ def test_configurable_context_and_parameter_snapshot():
     assert len(s.finish()) == 640
 
 
+@pytest.mark.skipif(
+    not (Path(__file__).resolve().parents[1] / 'scripts/vc_bench.py').exists(),
+    reason="scripts/vc_bench.py is absent from the public export",
+)
 def test_streaming_bench_uses_wav_hops_and_sola(wav_audio, tmp_path, monkeypatch, capsys):
     import importlib.util
     import json
