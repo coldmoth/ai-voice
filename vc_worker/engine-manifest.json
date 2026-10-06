@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "python": "3.10",
+  "uv": {
+    "version": "0.12.23",
+    "url": "https://github.com/astral-sh/uv/releases/download/0.12.23/uv-aarch64-apple-darwin.tar.gz",
+    "sha256": "50487ae565ccd96e499056b4674d438f4c53170202617b4c759defe0c6a1b544",
+    "size": 17044217
+  },
+  "requirements": "engine-requirements.lock",
+  "files": [
+    {
+      "id": "rvc-src",
+      "url": "https://codeload.github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI/tar.gz/81eed5e8f68b6bed1789f682fe78cdd324495afc",
+      "sha256": "2ba5ab91c018c0a65b156bff0629eb168b3c8cc8f3b950d0b44b354d3fa49284",
+      "size": 604731,
+      "dest": "spike/src/rvc",
+      "extract": "tar.gz",
+      "strip": 1,
+      "keep": [
+        "infer",
+        "configs",
+        "tools",
+        "train",
+        "i18n",
+        "LICENSE"
+      ]
+    },
+    {
+      "id": "seed-vc-src",
+      "url": "https://codeload.github.com/Plachtaa/seed-vc/tar.gz/51383efd921027683c89e5348211d93ff12ac2a8",
+      "sha256": "501f89707e61ed346f05e59049c413b881043ecad823049ffc14917777016a7d",
+      "size": 49010096,
+      "dest": "spike/src/seed-vc",
+      "extract": "tar.gz",
+      "strip": 1,
+      "keep": [
+        "inference.py",
+        "hf_utils.py",
+        "modules",
+        "configs",
+        "LICENSE"
+      ]
+    },
+    {
+      "id": "weight-1",
+      "url": "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/e6d0c1a17da07c33557852f9dfa2bd44cc75737d/hubert_base/config.json",
+      "sha256": "0346950779dfb7f9316fa74ed846e2b8a22a08eedfdc5387b73f327cb1a4a7cf",
+      "size": 1492,
+      "dest": "spike/weights/VoiceConversionWebUI/hubert_base/config.json"
+    },
+    {
+      "id": "weight-2",
+      "url": "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/e6d0c1a17da07c33557852f9dfa2bd44cc75737d/hubert_base/preprocessor_config.json",
+      "sha256": "7c1976a680fb7acc757cd36fb08eef878fa36c70b4c9d2d595df9c608bbbbf0e",
+      "size": 225,
+      "dest": "spike/weights/VoiceConversionWebUI/hubert_base/preprocessor_config.json"
+    },
+    {
+      "id": "weight-3",
+      "url": "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/e6d0c1a17da07c33557852f9dfa2bd44cc75737d/hubert_base/pytorch_model.bin",
+      "sha256": "cc8c20f4b90a520757260197a3ff2505705a7adbd20ad9eeaa4e1a9b38442ef5",
+      "size": 189206711,
+      "dest": "spike/weights/VoiceConversionWebUI/hubert_base/pytorch_model.bin"
+    },
+    {
+      "id": "weight-4",
+      "url": "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/e6d0c1a17da07c33557852f9dfa2bd44cc75737d/rmvpe.pt",
+      "sha256": "6d62215f4306e3ca278246188607209f09af3dc77ed4232efdd069798c4ec193",
+      "size": 181184272,
+      "dest": "spike/weights/VoiceConversionWebUI/rmvpe.pt"
+    },
+    {
+      "id": "weight-5",
+      "url": "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/e6d0c1a17da07c33557852f9dfa2bd44cc75737d/pretrained_v2/f0D48k.pth",
+      "sha256": "2269b73c7a4cf34da09aea99274dabf99b2ddb8a42cbfb065fb3c0aa9a2fc748",
+      "size": 142875703,
+      "dest": "spike/weights/VoiceConversionWebUI/pretrained_v2/f0D48k.pth"
+    },
+    {
+      "id": "weight-6",
+      "url": "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/e6d0c1a17da07c33557852f9dfa2bd44cc75737d/pretrained_v2/f0G48k.pth",
+      "sha256": "b5d51f589cc3632d4eae36a315b4179397695042edc01d15312e1bddc2b764a4",
+      "size": 75465569,
+      "dest": "spike/f0G48k.pth"
+    },
+    {
+      "id": "weight-7",
+      "url": "https://huggingface.co/Plachta/Seed-VC/resolve/257283f9f41585055e8f858fba4fd044e5caed6e/DiT_uvit_tat_xlsr_ema.pth",
+      "sha256": "c853ea578b409f625f961bcb15d5cff1f8ef9a75f3209ec21d9b7c73ab422e88",
+      "size": 142112203,
+      "dest": "spike/seed-tiny.pth"
+    },
+    {
+      "id": "weight-8",
+      "url": "https://huggingface.co/Plachta/Seed-VC/resolve/257283f9f41585055e8f858fba4fd044e5caed6e/config_dit_mel_seed_uvit_xlsr_tiny.yml",
+      "sha256": "e4f152f9c7b8924f82c9661cd28737204dd93368871a6feaec36437cb7138e74",
+      "size": 2100,
+      "dest": "spike/weights/Seed-VC/config_dit_mel_seed_uvit_xlsr_tiny.yml"
+    },
+    {
+      "id": "weight-9",
+      "url": "https://huggingface.co/funasr/campplus/resolve/e4b6ede7ce16997aff4ae69fbca1f0175e2afede/campplus_cn_common.bin",
+      "sha256": "3388cf5fd3493c9ac9c69851d8e7a8badcfb4f3dc631020c4961371646d5ada8",
+      "size": 28036335,
+      "dest": "spike/src/seed-vc/checkpoints/models--funasr--campplus/snapshots/e4b6ede7ce16997aff4ae69fbca1f0175e2afede/campplus_cn_common.bin"
+    },
+    {
+      "id": "weight-10",
+      "url": "https://huggingface.co/FunAudioLLM/CosyVoice-300M/resolve/24c40509c3c5ea6fe06b5f8790ff99e3714a6bee/hift.pt",
+      "sha256": "91e679b6ca1eff71187ffb4f3ab0444935594cdcc20a9bd12afad111ef8d6012",
+      "size": 81896716,
+      "dest": "spike/src/seed-vc/checkpoints/models--FunAudioLLM--CosyVoice-300M/snapshots/24c40509c3c5ea6fe06b5f8790ff99e3714a6bee/hift.pt"
+    },
+    {
+      "id": "weight-11",
+      "url": "https://huggingface.co/facebook/wav2vec2-xls-r-300m/resolve/1a640f32ac3e39899438a2931f9924c02f080a54/config.json",
+      "sha256": "0bffa0d0e98153e883b828d86491f3c6062cb563dc9d7a9cfd1790da30c286ac",
+      "size": 1568,
+      "dest": "spike/src/seed-vc/checkpoints/hf_cache/models--facebook--wav2vec2-xls-r-300m/snapshots/1a640f32ac3e39899438a2931f9924c02f080a54/config.json"
+    },
+    {
+      "id": "weight-12",
+      "url": "https://huggingface.co/facebook/wav2vec2-xls-r-300m/resolve/1a640f32ac3e39899438a2931f9924c02f080a54/preprocessor_config.json",
+      "sha256": "a2254a5b58f72cd4de3632f8eee64f3f098b7c1402128d2f419e7d00ae13e335",
+      "size": 212,
+      "dest": "spike/src/seed-vc/checkpoints/hf_cache/models--facebook--wav2vec2-xls-r-300m/snapshots/1a640f32ac3e39899438a2931f9924c02f080a54/preprocessor_config.json"
+    },
+    {
+      "id": "weight-13",
+      "url": "https://huggingface.co/facebook/wav2vec2-xls-r-300m/resolve/1a640f32ac3e39899438a2931f9924c02f080a54/pytorch_model.bin",
+      "sha256": "d5e490574712ad0a6736923b9ed11d4cd51c78609c36205f704fc4e87b11d2e0",
+      "size": 1269737156,
+      "dest": "spike/src/seed-vc/checkpoints/hf_cache/models--facebook--wav2vec2-xls-r-300m/snapshots/1a640f32ac3e39899438a2931f9924c02f080a54/pytorch_model.bin"
+    }
+  ],
+  "wheels_estimate_bytes": 1136640000
+}

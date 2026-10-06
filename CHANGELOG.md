@@ -1,0 +1,23 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.4.0] - unreleased
+
+### Added
+
+- First public release.
+- English and Russian UI.
+- First-launch setup.
+- API keys in Settings.
+- Update checker: checks GitHub Releases once a day, shows a banner when a new version is available, can be turned
+  off in Settings → General. It never installs anything itself.
+- Built-in virtual microphone: `AIVoiceMic.driver` (BlackHole v0.7.1 renamed), installed and removed from
+  Settings → Audio with the Mac admin password.
+- Live voice engine download: one-click install of Python 3.10 + PyTorch, the RVC and Seed-VC sources and the base
+  models from Hugging Face (~3.4 GB) into `~/Library/Application Support/AI Voice/vc-runtime`, with removal from
+  Settings → Storage.
+- Project documentation and site: English README with a Russian twin, architecture overview, contributing and
+  security guides, issue and pull request templates, and a static site for GitHub Pages.

@@ -1,0 +1,204 @@
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Voice</title><style>__STYLE__</style></head><body>
+<svg style="display:none" width="0" height="0" aria-hidden="true" focusable="false">
+  <symbol id="i-magnifier" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></symbol>
+  <symbol id="i-star" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m8 1.8 1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6Z"/></symbol>
+  <symbol id="i-star-fill" viewBox="0 0 16 16" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m8 1.8 1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6Z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 3.2v9.6l7.6-4.8Z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="8" height="8" rx="1.5"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.8" y="1.8" width="4.4" height="7.4" rx="2.2"/><path d="M3.5 7.8a4.5 4.5 0 0 0 9 0M8 12.3v2"/></symbol>
+  <symbol id="i-speaker" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6h2.5l3.5-3v10l-3.5-3H2.5z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4"/></symbol>
+  <symbol id="i-speaker-off" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6h2.5l3.5-3v10l-3.5-3H2.5z"/><path d="M11 6l3.5 4M14.5 6L11 10"/></symbol>
+  <symbol id="i-text" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4V3h10v1M8 3v10M6 13h4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"/></symbol>
+  <symbol id="i-speaker" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6v4h2.5l3.5 3V3L5 6Z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5"/></symbol>
+  <symbol id="i-waveform" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8v0M5.2 5.5v5M8 2.5v11M10.8 5v6M13.5 8v0"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6.85 3.03 L7.06 1.32 L8.94 1.32 L9.15 3.03 L10.70 3.67 L12.06 2.61 L13.39 3.94 L12.33 5.30 L12.97 6.85 L14.68 7.06 L14.68 8.94 L12.97 9.15 L12.33 10.70 L13.39 12.06 L12.06 13.39 L10.70 12.33 L9.15 12.97 L8.94 14.68 L7.06 14.68 L6.85 12.97 L5.30 12.33 L3.94 13.39 L2.61 12.06 L3.67 10.70 L3.03 9.15 L1.32 8.94 L1.32 7.06 L3.03 6.85 L3.67 5.30 L2.61 3.94 L3.94 2.61 L5.30 3.67Z"/><circle cx="8" cy="8" r="2.25"/></symbol>
+  <symbol id="i-warning" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5 14.2 13H1.8Z"/><path d="M8 6.5v3M8 11.5v0"/></symbol>
+</svg>
+<div class="preview-banner sr-only" id="status-line" role="status" aria-live="polite" data-i18n="status.stopped">Stopped</div>
+<div class="app-shell">
+  <aside class="sidebar n-sidebar" data-i18n-aria="catalog.library" aria-label="Voice library">
+    <div class="n-traffic-spacer" aria-hidden="true"></div>
+    <div class="sidebar-header">
+      <div class="logo-row" data-i18n-title="catalog.discord_voices" title="Voices">
+        <svg class="logo-wave" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="currentColor" opacity=".15"/>
+          <g stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="6" y1="16" x2="6" y2="16"/>
+            <line x1="10" y1="13" x2="10" y2="19"/>
+            <line x1="14" y1="9" x2="14" y2="23"/>
+            <line x1="18" y1="11" x2="18" y2="21"/>
+            <line x1="22" y1="14" x2="22" y2="18"/>
+            <line x1="26" y1="16" x2="26" y2="16"/>
+          </g>
+        </svg>
+        <div class="logo-text">AI Voice</div>
+      </div>
+      <div class="search-row">
+        <input type="search" id="search-input" data-i18n-placeholder="catalog.search_voice" placeholder="Search voices" data-i18n-aria="catalog.search_voice" aria-label="Search voices">
+        <button id="search-btn" type="button" data-i18n="catalog.search">Search</button>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="mine" role="tab" aria-selected="true" data-i18n="catalog.mine">Mine</button>
+        <button class="tab" data-tab="catalog" role="tab" aria-selected="false" data-i18n="catalog.title">Catalog</button>
+      </div>
+      <div class="catalog-filters" id="catalog-filters" hidden data-i18n-aria="catalog.filters" aria-label="Catalog filters">
+        <label class="catalog-filter">
+          <span class="catalog-filter-label sr-only" data-i18n="catalog.gender">Gender</span>
+          <select id="gender-filter" data-filter data-filter-key="gender" data-i18n-aria="catalog.gender_filter" aria-label="Filter by gender">
+            <option value="all" data-i18n="common.all">All</option>
+            <option value="female" data-i18n="catalog.female">Female</option>
+            <option value="male" data-i18n="catalog.male">Male</option>
+          </select>
+        </label>
+        <label class="catalog-filter">
+          <span class="catalog-filter-label sr-only" data-i18n="catalog.sort">Sort</span>
+          <select id="sort-filter" data-filter data-filter-key="sort_by" data-i18n-aria="catalog.sort_aria" aria-label="Catalog sorting">
+            <option value="task_count" data-i18n="catalog.popular">Popular</option>
+            <option value="created_at" data-i18n="catalog.new">New</option>
+            <option value="score" data-i18n="catalog.relevant">Relevant</option>
+          </select>
+        </label>
+        <label class="catalog-filter">
+          <span class="catalog-filter-label sr-only" data-i18n="catalog.language_filter">Catalog language</span>
+          <select id="catalog-language-filter" data-i18n-aria="catalog.language_filter">
+            <option value="ru" data-i18n="catalog.language_ru">Russian</option>
+            <option value="en" data-i18n="catalog.language_en">English</option>
+            <option value="all" data-i18n="catalog.language_all">All languages</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="library-tools"><span id="voice-count" data-i18n="catalog.library">Voice library</span><button id="select-btn" type="button" class="select-btn" data-i18n="common.select_prefix">Select</button><button id="fav-filter" type="button" aria-pressed="false" data-i18n-title="catalog.favorites_only" title="Favorites only"><svg class="n-icon" aria-hidden="true"><use href="#i-star"/></svg><span class="sr-only" data-i18n="catalog.favorites">Favorites</span></button></div>
+    <div class="voice-list" id="voice-list" role="listbox" data-i18n-aria="catalog.voice_list" aria-label="Voice list"></div>
+    <template id="voice-empty-state">
+      <div class="empty-state" data-i18n="catalog.empty_library">No voices yet</div>
+      <button type="button" id="find-voice-btn" class="load-more" data-i18n="catalog.find_voice">Find a voice</button>
+    </template>
+    <div class="select-bar" id="select-bar" hidden><button type="button" id="select-all-btn" class="select-link" data-i18n="common.all">All</button><button type="button" id="select-delete-btn" class="select-delete" disabled data-i18n="catalog.delete_initial">Delete (0)</button></div>
+    <section class="vc-sidebar" id="vc-sidebar" data-i18n-aria="main.live_voice" aria-label="Live voice">
+      <div class="vc-sheet-tabs hf-tabs" role="tablist" data-i18n-aria="catalog.voices" aria-label="Voices">
+        <button type="button" id="vc-mine-tab" class="vc-tab active" role="tab" aria-selected="true" aria-controls="vc-mine" data-i18n="settings.storage.my_voices">My voices</button>
+        <button type="button" id="vc-catalog-tab" class="vc-tab" role="tab" aria-selected="false" aria-controls="vc-catalog" data-i18n="catalog.title">Catalog</button>
+      </div>
+      <div id="vc-mine" role="tabpanel"><div class="vc-sidebar-head"><h3 class="eyebrow" data-i18n="settings.storage.my_voices">My voices</h3><span class="vc-head-actions"><button type="button" id="vc-select-btn" class="select-btn" data-i18n="common.select_prefix">Select</button><button type="button" id="vc-add-btn" class="vc-add-btn" data-i18n-aria="vc.add_voice" aria-label="Add voice"><span aria-hidden="true">+</span><span class="vc-add-label" data-i18n="common.add_prefix">Add</span></button></span></div><div class="vc-list" id="vc-list" role="listbox" data-i18n-aria="settings.storage.my_voices" aria-label="My voices"></div><div class="select-bar" id="vc-select-bar" hidden><button type="button" id="vc-select-all-btn" class="select-link" data-i18n="common.all">All</button><button type="button" id="vc-select-delete-btn" class="select-delete" disabled data-i18n="catalog.delete_initial">Delete (0)</button></div></div>
+      <div id="vc-catalog" role="tabpanel" hidden>
+        <div class="hf-filters">
+          <input id="hf-search" type="search" data-i18n-placeholder="vc.search_models" placeholder="Search models" data-i18n-aria="vc.search_models" aria-label="Search models">
+          <div class="vc-sheet-tabs" role="group" data-i18n-aria="vc.sort_models" aria-label="Model sorting">
+            <button type="button" class="vc-tab active" data-hf-sort="downloads" aria-pressed="true" data-i18n="catalog.popular">Popular</button>
+            <button type="button" class="vc-tab" data-hf-sort="lastModified" aria-pressed="false" data-i18n="catalog.new">New</button>
+          </div>
+          <select id="hf-lang" data-i18n-aria="vc.model_language" aria-label="Model language"><option value="all" data-i18n="catalog.language_all">All languages</option><option value="ru" data-i18n="catalog.language_ru">Russian</option><option value="en" data-i18n="catalog.language_en">English</option></select>
+        </div>
+        <div id="hf-list" data-i18n-aria="vc.model_catalog" aria-label="Model catalog"></div>
+        <div id="hf-message" role="status"></div>
+        <button type="button" id="hf-more" class="vc-add-btn" hidden data-i18n="common.more">More</button>
+        <p class="hf-notice" data-i18n="vc.hf_notice">Models are uploaded by Hugging Face users. Use other people&#x27;s voices for personal use only</p>
+      </div>
+    </section>
+  </aside>
+  <main class="main">
+    <header class="n-toolbar">
+      <div class="workspace-heading"><h2 data-i18n="main.title">Speech</h2><span class="eyebrow">AI VOICE</span><button id="settings-btn" type="button" class="settings-btn" data-i18n-aria="settings.title" aria-label="Settings" data-i18n-title="settings.shortcut_title" title="Settings (⌘,)"><svg class="n-icon" aria-hidden="true"><use href="#i-gear"/></svg></button></div>
+    </header>
+    <div class="main-content" id="main-content">
+<div id="fish-banner" class="fish-banner" role="region" data-i18n-aria="main.fish_banner.aria" hidden><span data-i18n="main.fish_banner.text">Connect Fish Audio to start speaking</span><button type="button" id="fish-banner-btn" class="btn-secondary" data-i18n="main.fish_banner.connect">Connect</button></div>
+<div id="update-banner" class="update-banner" role="region" hidden><span id="update-banner-text" data-i18n="update.banner.text"></span><a id="update-download" class="btn-secondary" target="_blank" rel="noopener noreferrer" data-i18n="update.banner.download">Download</a><button type="button" id="update-skip" class="btn-secondary" data-i18n="update.banner.skip">Skip this version</button><button type="button" id="update-close" class="btn-secondary" data-i18n-aria="common.close">&times;</button></div>
+      <div class="mode-tabs" role="tablist" data-i18n-aria="main.mode_aria" aria-label="Operating mode">
+        <button class="mode-btn active" data-mode="mic" role="tab" aria-selected="true"><svg class="n-icon" aria-hidden="true"><use href="#i-mic"/></svg><span data-i18n="main.microphone">Microphone</span></button>
+        <button class="mode-btn" data-mode="text" role="tab" aria-selected="false"><svg class="n-icon" aria-hidden="true"><use href="#i-text"/></svg><span data-i18n="main.text">Text</span></button>
+        <button class="mode-btn" data-mode="vc" role="tab" aria-selected="false"><svg class="n-icon" aria-hidden="true"><use href="#i-waveform"/></svg><span data-i18n="main.live_voice">Live voice</span></button>
+      </div>
+      <div class="voice-card" id="voice-card">
+        <div class="voice-card-header">
+          <div class="avatar-lg" id="main-avatar">—</div>
+          <div id="main-meta">
+            <span class="eyebrow" data-i18n="main.selected_voice">Selected voice</span>
+            <h1 class="voice-card-title" id="main-name" data-i18n="main.choose_voice">Choose a voice</h1>
+            <div class="voice-card-sub" id="main-sub" data-i18n="main.no_voice">No voice selected</div>
+          </div>
+          <span class="pill-group"><span class="status-pill swap-pill" id="swap-pill" data-state="own" hidden data-i18n="main.own_voice">Your voice</span><span class="status-pill" id="status-pill" data-state="stopped" data-i18n="status.stopped">Stopped</span></span>
+        </div>
+      </div>
+      <div class="mode-panel" id="mode-panel"></div>
+      <section class="history" id="history" hidden data-i18n-aria="main.recent_phrases" aria-label="Recent phrases">
+        <h3 class="eyebrow" data-i18n="main.recent">Recent</h3>
+        <ul class="history-list" id="history-list"></ul>
+      </section>
+    </div>
+    <footer class="footer">
+      <div class="footer-left">
+        <button type="button" class="route-chip" id="route-chip" data-i18n-title="settings.audio.open" title="Open audio settings"><svg class="n-icon" aria-hidden="true"><use href="#i-mic"/></svg><span id="route-text">MIC → AI Voice</span></button>
+        <button type="button" class="footer-icon-btn" id="monitor-btn" data-i18n-aria="main.monitoring" aria-label="Monitoring" aria-pressed="false" aria-describedby="footer-tip"><svg class="n-icon" aria-hidden="true"><use href="#i-speaker-off"/></svg></button>
+        <div class="footer-volume" id="vc-volume" hidden>
+          <input type="range" id="vc-output-gain" min="-24" max="12" step="1" value="0" data-i18n-aria="settings.audio.output_volume" aria-label="Output volume">
+          <span class="footer-volume-value" id="vc-output-gain-value" data-i18n="settings.audio.zero_db">0 dB</span>
+        </div>
+      </div>
+      <div class="footer-right">
+        <button id="stop-btn" type="button" hidden disabled data-i18n="common.stop">Stop</button>
+        <button class="start-btn" id="start-btn" type="button" data-i18n="common.start">Start</button>
+      </div>
+    </footer>
+  </main>
+</div>
+<div class="vc-sheet" id="hf-detail" hidden><div class="vc-sheet-card" role="dialog" aria-modal="true" aria-labelledby="hf-detail-title">
+  <div class="vc-sheet-head"><h2 id="hf-detail-title" tabindex="-1"></h2><button type="button" id="hf-detail-close" class="vc-sheet-close" data-i18n-aria="common.close" aria-label="Close">×</button></div>
+  <a id="hf-detail-link" target="_blank" rel="noopener noreferrer"></a>
+  <div id="hf-detail-meta"></div><div id="hf-detail-images" hidden></div>
+  <div id="hf-detail-sample" hidden></div><div id="hf-detail-description"></div><div id="hf-detail-download"></div>
+</div></div>
+<div class="vc-sheet" id="vc-sheet" hidden><div class="vc-sheet-card" role="dialog" aria-modal="true" aria-labelledby="vc-sheet-title"><div class="vc-sheet-head"><h2 id="vc-sheet-title" data-i18n="vc.add_voice">Add voice</h2><button type="button" id="vc-sheet-close" class="vc-sheet-close" data-i18n-aria="common.close" aria-label="Close">×</button></div><div class="vc-sheet-tabs" role="tablist"><button type="button" class="vc-tab active" role="tab" aria-selected="true" data-vc-tab="import" data-i18n="vc.import_model">Import model</button><button type="button" class="vc-tab" role="tab" aria-selected="false" data-vc-tab="audio" data-i18n="vc.from_audio">From audio</button></div>
+<div class="vc-pane" data-vc-pane="import"><label class="vc-drop" id="vc-import-drop" tabindex="0" role="button"><input type="file" id="vc-import-files" multiple accept=".pth,.index,.zip" hidden><span data-i18n="vc.import_drop">Drop .pth, .index or .zip files here, or click to choose</span></label><ul class="vc-files" id="vc-import-list"></ul><label class="vc-field"><span data-i18n="vc.voice_name">Voice name</span><input type="text" id="vc-import-name" maxlength="40" autocomplete="off" data-i18n-placeholder="vc.name_example" placeholder="For example, Narrator"></label><button type="button" class="vc-submit" id="vc-import-submit" data-i18n="vc.import">Import</button></div>
+<div class="vc-pane" data-vc-pane="audio" hidden><label class="vc-drop" id="vc-audio-drop" tabindex="0" role="button"><input type="file" id="vc-audio-files" multiple accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.flac,.mp4,.mov" hidden><span data-i18n="vc.audio_drop">Drop audio or video here, or click to choose</span></label><ul class="vc-files" id="vc-audio-list"></ul><div class="vc-hint" id="vc-audio-hint" data-i18n="vc.audio_hint">A quick voice needs at least 10 seconds of speech; training needs at least 3 minutes.</div><label class="vc-field"><span data-i18n="vc.voice_name">Voice name</span><input type="text" id="vc-audio-name" maxlength="40" autocomplete="off" data-i18n-placeholder="vc.my_voice_example" placeholder="For example, My voice"></label><div class="vc-presets" id="vc-audio-train" role="group" data-i18n-aria="status.training_train" aria-label="Training"><button type="button" data-preset="none" class="active" aria-pressed="true" data-i18n="vc.no_training">No training</button><button type="button" data-preset="fast" aria-pressed="false" data-i18n="vc.preset.fast">Fast</button><button type="button" data-preset="normal" aria-pressed="false" data-i18n="vc.preset.normal">Normal</button><button type="button" data-preset="max" aria-pressed="false" data-i18n="vc.preset.max">Maximum</button></div><div class="vc-hint" id="vc-audio-eta" data-i18n="vc.time_after_processing">Time estimate appears after processing</div><button type="button" class="vc-submit" id="vc-audio-submit" data-i18n="vc.create_voice">Create voice</button></div>
+<div id="vc-upload-progress" hidden><div class="vc-bar"><i></i></div><span class="vc-hint" data-i18n="vc.upload_initial">Uploading 0%</span></div><div class="vc-error" id="vc-sheet-error" role="alert" hidden></div></div></div>
+<div id="onboarding" class="ob" hidden><canvas class="ob-bg" id="ob-canvas" aria-hidden="true"></canvas>
+<section class="ob-glass" id="ob-glass" role="dialog" aria-modal="true" aria-labelledby="ob-title">
+<div class="ob-step" id="ob-step"></div>
+<div class="ob-footer"><button type="button" id="ob-back" class="ob-btn-secondary" data-i18n="onboarding.back">Back</button>
+<div class="ob-dots" id="ob-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+<div class="ob-actions"><button type="button" id="ob-skip" class="ob-btn-secondary" data-i18n="onboarding.skip">Skip</button>
+<button type="button" id="ob-next" class="ob-btn-primary" data-i18n="onboarding.next">Next</button></div></div>
+</section></div>
+<div class="settings-sheet" id="settings-sheet" hidden><div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+<nav class="settings-nav" data-i18n-aria="settings.sections" aria-label="Settings sections"><h2 id="settings-title" class="sr-only" data-i18n="settings.title">Settings</h2>
+<button type="button" class="settings-nav-item active" data-section="general" aria-current="page" data-i18n="settings.nav.general">General</button>
+<button type="button" class="settings-nav-item" data-section="api" data-i18n="settings.keys_api.title">API keys</button>
+<button type="button" class="settings-nav-item" data-section="audio" data-i18n="settings.audio.title">Audio</button>
+<button type="button" class="settings-nav-item" data-section="asr" data-i18n="main.recognition_prefix">Recognition</button>
+<button type="button" class="settings-nav-item" data-section="keys" data-i18n="settings.keys.title">Shortcuts</button>
+<button type="button" class="settings-nav-item" data-section="storage" data-i18n="settings.storage.title">Storage</button>
+<button type="button" class="settings-nav-item" data-section="usage" data-i18n="settings.usage.title">Usage</button></nav>
+<div class="settings-content"><button type="button" id="settings-close" class="settings-close" data-i18n-aria="common.close" aria-label="Close">×</button>
+<section class="settings-pane" data-pane="general" aria-labelledby="settings-h-general"><h3 id="settings-h-general" data-i18n="settings.general.title">General</h3>
+<div class="audio-settings"><div class="audio-row"><label for="ui-language-select" data-i18n="settings.general.language">Language</label><select id="ui-language-select"></select></div><div class="audio-row"><label for="run-setup-btn" data-i18n="settings.general.run_setup_label">First-launch setup</label><button type="button" id="run-setup-btn" class="settings-action" data-i18n="settings.general.run_setup">Run setup again</button></div>
+<div class="audio-row"><span data-i18n="update.settings.version">Version</span><span id="update-version"></span></div>
+<div class="audio-row"><label for="update-auto" data-i18n="update.settings.auto">Check for updates automatically</label><input type="checkbox" id="update-auto" class="monitor-toggle"></div>
+<div class="audio-row update-check-row"><button type="button" id="update-check-btn" class="btn-secondary" data-i18n="update.settings.check">Check for updates</button><span id="update-check-status" role="status" aria-live="polite"></span></div></div></section>
+<section class="settings-pane" data-pane="api" aria-labelledby="settings-h-api" hidden><h3 id="settings-h-api" data-i18n="settings.keys_api.title">API keys</h3><div id="api-keys-settings"></div></section>
+<section class="settings-pane" data-pane="audio" aria-labelledby="settings-h-audio" hidden><h3 id="settings-h-audio" data-i18n="settings.audio.title">Audio</h3>
+<p class="settings-hint" data-i18n="settings.audio.discord_hint">Select “AI Voice” as the input device in other apps</p>
+<div class="audio-settings" id="audio-settings">
+<div class="audio-row"><label for="input-dev" data-i18n="settings.audio.input_device">Input device</label><select id="input-dev"><option value="" data-i18n="settings.audio.device_auto">Automatic</option></select></div>
+<div class="audio-row"><label for="output-dev" data-i18n="settings.audio.output_device">Output device</label><select id="output-dev"><option value="" data-i18n="settings.audio.device_auto">Automatic</option></select></div>
+<div class="audio-row" id="driver-row" hidden><span data-i18n="settings.driver.title">Virtual microphone</span><span id="driver-actions"></span></div>
+<p class="settings-hint" id="driver-caption" hidden data-i18n="settings.driver.caption">Asks for your Mac password. Audio stops for a few seconds while macOS reloads sound devices.</p>
+</div></section>
+<section class="settings-pane" data-pane="asr" aria-labelledby="settings-h-asr" hidden><h3 id="settings-h-asr" data-i18n="main.recognition_prefix">Recognition</h3>
+<div class="audio-settings" id="asr-settings"></div></section>
+<section class="settings-pane" data-pane="keys" aria-labelledby="settings-h-keys" hidden><h3 id="settings-h-keys" data-i18n="settings.keys.title">Shortcuts</h3>
+<div class="audio-settings" id="keys-settings"></div></section>
+<section class="settings-pane" data-pane="storage" aria-labelledby="settings-h-storage" hidden><h3 id="settings-h-storage" data-i18n="settings.storage.title">Storage</h3>
+<div class="storage-total" id="storage-total" aria-live="polite" data-i18n="settings.storage.counting">Calculating…</div>
+<div class="storage-bar" id="storage-bar" aria-hidden="true"></div>
+<div class="audio-settings storage-list" id="storage-list"></div>
+<div class="vc-error" id="storage-error" role="alert" hidden></div></section>
+<section class="settings-pane" data-pane="usage" aria-labelledby="settings-h-usage" hidden><h3 id="settings-h-usage" data-i18n="settings.usage.title">Usage</h3>
+<div class="usage-lines" id="usage-line"><p id="usage-today" data-i18n="settings.usage.today_initial">Today: 0 chars</p><p id="usage-month" data-i18n="settings.usage.month_initial">This month: 0 chars</p><div class="storage-bar usage-bar" id="usage-bar" hidden><i class="storage-seg"></i></div><p id="usage-left" hidden></p></div>
+<div class="audio-settings" id="usage-settings"></div></section>
+</div></div></div>
+<div class="footer-tip" id="footer-tip" role="tooltip" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>__SCRIPT__</script></body></html>

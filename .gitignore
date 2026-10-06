@@ -1,0 +1,22 @@
+.venv/
+.venv-vc/
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.DS_Store
+.superpowers/
+build/
+/AI Voice.app/
+models/
+vendor/
+state/
+logs/
+recordings/
+*.wav
+*.mp3
+*.pcm
+*.pth
+*.npz
+*.index

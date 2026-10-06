@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in AI Voice is not working as expected
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Shown in Settings → General (for example 0.4.0).
+      placeholder: "0.4.0"
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "macOS 15.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: mac-model
+    attributes:
+      label: Mac model
+      options:
+        - Apple silicon
+        - Intel
+    validations:
+      required: true
+  - type: input
+    id: virtual-device
+    attributes:
+      label: Virtual audio device
+      description: "Which device the app outputs to: the built-in AI Voice Mic driver, your own BlackHole, Loopback, or something else."
+      placeholder: "AI Voice Mic (built-in driver)"
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the app
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lines from the logs folder (`~/Library/Application Support/AI Voice/logs`). Remove anything personal before pasting.
+      render: text
+    validations:
+      required: false

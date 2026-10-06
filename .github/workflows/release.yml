@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install uv
+        run: brew install uv
+      - name: Build driver
+        run: scripts/build-driver.sh
+      - name: Build app
+        run: scripts/build-app.sh
+      - name: Package and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ditto -c -k --keepParent "build/AI Voice.app" "AI-Voice-${VERSION}.zip"
+          shasum -a 256 "AI-Voice-${VERSION}.zip" > "AI-Voice-${VERSION}.zip.sha256"
+          awk "/^## \\[${VERSION}\\]/{f=1;next}/^## \\[/{f=0}f" CHANGELOG.md > notes.md
+          gh release create "v$VERSION" --notes-file notes.md "AI-Voice-${VERSION}.zip" "AI-Voice-${VERSION}.zip.sha256"

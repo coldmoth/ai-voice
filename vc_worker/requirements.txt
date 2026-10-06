@@ -1,0 +1,2 @@
+# Add to the existing .venv-vc environment; do not install in the main app venv.
+sounddevice>=0.5,<1

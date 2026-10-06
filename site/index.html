@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Voice — speak with any voice in any app</title>
+<meta name="description" content="AI Voice is a free, open-source macOS app: your speech, a Fish Audio voice, a virtual microphone. Speak with any voice in any app.">
+<meta property="og:title" content="AI Voice">
+<meta property="og:description" content="Speak with any voice in any app — your speech, a Fish Audio voice, a virtual microphone.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/og.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="bg-canvas" aria-hidden="true"></canvas>
+
+<header class="hero">
+  <img class="hero-logo" src="assets/favicon.png" width="64" height="64" alt="">
+  <h1>AI Voice</h1>
+  <p class="hero-subtitle">Speak with any voice in any app — your speech, a Fish Audio voice, a virtual microphone.</p>
+  <p class="hero-actions">
+    <a class="btn btn-primary" href="https://github.com/coldmoth/ai-voice/releases/latest">Download for macOS</a>
+    <a class="btn btn-secondary" href="https://github.com/coldmoth/ai-voice">View on GitHub</a>
+  </p>
+  <p class="hero-note">Free and open source · macOS 13+ · Apple silicon</p>
+</header>
+
+<main>
+  <section id="features" aria-labelledby="features-title">
+    <h2 id="features-title">Features</h2>
+    <div class="cards">
+      <article class="card">
+        <h3>Any voice</h3>
+        <p>Thousands of Fish Audio voices with search, filters and demos, plus voices from your own Fish account. Favourites and a hotkey swap mid-call.</p>
+      </article>
+      <article class="card">
+        <h3>Real-time or text</h3>
+        <p>Speak into the microphone, or type up to 1000 characters and press Speak text. An experimental Live voice engine converts your voice on-device.</p>
+      </article>
+      <article class="card">
+        <h3>Private by design</h3>
+        <p>No telemetry, no accounts, no analytics. API keys live only in the macOS Keychain, and audio is never saved to disk.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="demo" aria-labelledby="demo-title">
+    <h2 id="demo-title">See it in action</h2>
+    <figure class="glass demo-frame">
+      <img src="assets/demo.gif" alt="Demo: pick a voice in the catalog, speak, and hear the result through the virtual microphone" loading="lazy">
+    </figure>
+    <p class="demo-fallback">The demo shows the main window: you pick a Fish Audio voice, speak or type a line, and the result plays through the virtual microphone that other apps use as their input.</p>
+  </section>
+
+  <section id="how-it-works" aria-labelledby="how-title">
+    <h2 id="how-title">How it works</h2>
+    <ol class="steps">
+      <li class="glass">
+        <h3>Install</h3>
+        <p>Download the app from Releases, move it to Applications and open it. The setup screens handle permissions and the virtual microphone.</p>
+      </li>
+      <li class="glass">
+        <h3>Add your Fish Audio key</h3>
+        <p>Paste your API key once. It is stored in the macOS Keychain, and usage is billed by Fish Audio to your own account.</p>
+      </li>
+      <li class="glass">
+        <h3>Pick the device in your app</h3>
+        <p>In your call, stream or game app, select <strong>AI Voice Mic</strong> as the microphone — and talk with your new voice.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section id="screenshots" aria-labelledby="screenshots-title">
+    <h2 id="screenshots-title">Screenshots</h2>
+    <div class="shots">
+      <figure class="glass"><img src="assets/main.png" alt="Main window: text input, selected voice and speak controls" loading="lazy"></figure>
+      <figure class="glass"><img src="assets/catalog.png" alt="Voice catalog with search and filters" loading="lazy"></figure>
+      <figure class="glass"><img src="assets/settings-keys.png" alt="Settings: API keys stored in the macOS Keychain" loading="lazy"></figure>
+      <figure class="glass"><img src="assets/onboarding-fish.png" alt="Setup screen: adding a Fish Audio API key" loading="lazy"></figure>
+      <figure class="glass"><img src="assets/onboarding-device.png" alt="Setup screen: choosing the virtual microphone" loading="lazy"></figure>
+      <figure class="glass"><img src="assets/update.png" alt="Update available dialog" loading="lazy"></figure>
+      <figure class="glass"><img src="assets/engine.png" alt="Live voice engine download card in Settings" loading="lazy"></figure>
+    </div>
+  </section>
+
+  <section id="responsible-use" aria-labelledby="responsible-title">
+    <h2 id="responsible-title">Responsible use</h2>
+    <div class="glass responsible">
+      <p>Use your own voice or voices you have the right to use. <strong>Do not impersonate real people</strong>, deceive, harass, commit fraud or bypass voice verification. Follow the terms of service of Fish Audio and of the apps you use it with. Voice models from Hugging Face have their own licences — check them before use. The authors are not responsible for misuse.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>
+    <a href="https://github.com/coldmoth/ai-voice">GitHub</a> ·
+    <a href="https://github.com/coldmoth/ai-voice/blob/main/LICENSE">License GPL-3.0</a>
+  </p>
+  <p class="footer-note">Not affiliated with Fish Audio.</p>
+</footer>
+
+<script src="bg.js" defer></script>
+</body>
+</html>

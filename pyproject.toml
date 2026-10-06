@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-voice"
+dynamic = ["version"]
+description = "Speak with any voice in any app: macOS speech → Fish Audio TTS → virtual microphone"
+license = "GPL-3.0-only"
+requires-python = ">=3.12"
+dependencies = ["httpx>=0.28,<1", "numpy>=2.3,<3", "sounddevice>=0.5,<1", "soxr>=1.0,<2"]
+
+[project.scripts]
+ai-voice = "ai_voice.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pytest-asyncio>=1"]
+gigaam = ["onnx-asr>=0.12", "onnxruntime>=1.20", "huggingface_hub>=0.25"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ai_voice = ["locales/*.json"]
+
+[tool.setuptools.dynamic]
+version = {attr = "ai_voice.__version__"}
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,14 @@
+# Необязательно: скопируйте в config.toml для изменения параметров.
+input_device = "MIC"
+output_device = "AI Voice"
+voice = "bykov"
+language = "ru-RU"
+model = "s2.1-pro-free"
+tts_sample_rate = 44100
+output_sample_rate = 48000
+# Максимальная очередь аудио; не добавляет столько задержки при запуске.
+buffer_ms = 250
+endpoint_ms = 450
+max_retries = 2
+retry_base_seconds = 0.25
+request_timeout_seconds = 15.0
