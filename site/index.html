@@ -16,63 +16,64 @@
 <canvas id="bg-canvas" aria-hidden="true"></canvas>
 
 <header class="hero">
+  <div class="lang" role="group" aria-label="Language"><button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="ru" aria-pressed="false">RU</button></div>
   <img class="hero-logo" src="assets/favicon.png" width="64" height="64" alt="">
   <h1>AI Voice</h1>
-  <p class="hero-subtitle">Speak with any voice in any app — your speech, a Fish Audio voice, a virtual microphone.</p>
+  <p class="hero-subtitle" data-ru="Говори любым голосом в любом приложении: твоя речь, голос Fish Audio, виртуальный микрофон.">Speak with any voice in any app — your speech, a Fish Audio voice, a virtual microphone.</p>
   <p class="hero-actions">
-    <a class="btn btn-primary" href="https://github.com/coldmoth/ai-voice/releases/latest">Download for macOS</a>
-    <a class="btn btn-secondary" href="https://github.com/coldmoth/ai-voice">View on GitHub</a>
+    <a class="btn btn-primary" href="https://github.com/coldmoth/ai-voice/releases/latest" data-ru="Скачать для macOS">Download for macOS</a>
+    <a class="btn btn-secondary" href="https://github.com/coldmoth/ai-voice" data-ru="Открыть на GitHub">View on GitHub</a>
   </p>
-  <p class="hero-note">Free and open source · macOS 13+ · Apple silicon</p>
+  <p class="hero-note" data-ru="Бесплатно, открытый код · macOS 13+ · Apple silicon">Free and open source · macOS 13+ · Apple silicon</p>
 </header>
 
 <main>
   <section id="features" aria-labelledby="features-title">
-    <h2 id="features-title">Features</h2>
+    <h2 id="features-title" data-ru="Возможности">Features</h2>
     <div class="cards">
       <article class="card">
-        <h3>Any voice</h3>
-        <p>Thousands of Fish Audio voices with search, filters and demos, plus voices from your own Fish account. Favourites and a hotkey swap mid-call.</p>
+        <h3 data-ru="Любой голос">Any voice</h3>
+        <p data-ru="Тысячи голосов Fish Audio с поиском, фильтрами и демо, плюс голоса из твоего аккаунта Fish. Избранное и горячая клавиша меняют голос прямо в звонке.">Thousands of Fish Audio voices with search, filters and demos, plus voices from your own Fish account. Favourites and a hotkey swap mid-call.</p>
       </article>
       <article class="card">
-        <h3>Real-time or text</h3>
-        <p>Speak into the microphone, or type up to 1000 characters and press Speak text. An experimental Live voice engine converts your voice on-device.</p>
+        <h3 data-ru="В реальном времени или текстом">Real-time or text</h3>
+        <p data-ru="Говори в микрофон или набери до 1000 символов и нажми «Speak text». Экспериментальный движок Live voice преобразует голос прямо на устройстве.">Speak into the microphone, or type up to 1000 characters and press Speak text. An experimental Live voice engine converts your voice on-device.</p>
       </article>
       <article class="card">
-        <h3>Private by design</h3>
-        <p>No telemetry, no accounts, no analytics. API keys live only in the macOS Keychain, and audio is never saved to disk.</p>
+        <h3 data-ru="Приватность по умолчанию">Private by design</h3>
+        <p data-ru="Без телеметрии, аккаунтов и аналитики. API-ключи хранятся только в Keychain macOS, аудио на диск не сохраняется.">No telemetry, no accounts, no analytics. API keys live only in the macOS Keychain, and audio is never saved to disk.</p>
       </article>
     </div>
   </section>
 
   <section id="demo" aria-labelledby="demo-title">
-    <h2 id="demo-title">See it in action</h2>
+    <h2 id="demo-title" data-ru="Как это выглядит">See it in action</h2>
     <figure class="glass demo-frame">
       <img src="assets/demo.gif" alt="Demo: pick a voice in the catalog, speak, and hear the result through the virtual microphone" loading="lazy">
     </figure>
-    <p class="demo-fallback">The demo shows the main window: you pick a Fish Audio voice, speak or type a line, and the result plays through the virtual microphone that other apps use as their input.</p>
+    <p class="demo-fallback" data-ru="Демо показывает главное окно: выбираешь голос Fish Audio, говоришь или печатаешь фразу, и результат звучит через виртуальный микрофон, который другие приложения используют как вход.">The demo shows the main window: you pick a Fish Audio voice, speak or type a line, and the result plays through the virtual microphone that other apps use as their input.</p>
   </section>
 
   <section id="how-it-works" aria-labelledby="how-title">
-    <h2 id="how-title">How it works</h2>
+    <h2 id="how-title" data-ru="Как это работает">How it works</h2>
     <ol class="steps">
       <li class="glass">
-        <h3>Install</h3>
-        <p>Download the app from Releases, move it to Applications and open it. The setup screens handle permissions and the virtual microphone.</p>
+        <h3 data-ru="Установка">Install</h3>
+        <p data-ru="Скачай приложение из Releases, перенеси в «Программы» и открой. Экраны настройки сами подскажут про разрешения и виртуальный микрофон.">Download the app from Releases, move it to Applications and open it. The setup screens handle permissions and the virtual microphone.</p>
       </li>
       <li class="glass">
-        <h3>Add your Fish Audio key</h3>
-        <p>Paste your API key once. It is stored in the macOS Keychain, and usage is billed by Fish Audio to your own account.</p>
+        <h3 data-ru="Добавь ключ Fish Audio">Add your Fish Audio key</h3>
+        <p data-ru="Вставь API-ключ один раз. Он хранится в Keychain macOS, а оплату использования Fish Audio списывает с твоего аккаунта.">Paste your API key once. It is stored in the macOS Keychain, and usage is billed by Fish Audio to your own account.</p>
       </li>
       <li class="glass">
-        <h3>Pick the device in your app</h3>
-        <p>In your call, stream or game app, select <strong>AI Voice Mic</strong> as the microphone — and talk with your new voice.</p>
+        <h3 data-ru="Выбери устройство в приложении">Pick the device in your app</h3>
+        <p data-ru="В приложении для звонков, стримов или игр выбери микрофон <strong>AI Voice Mic</strong> — и говори новым голосом.">In your call, stream or game app, select <strong>AI Voice Mic</strong> as the microphone — and talk with your new voice.</p>
       </li>
     </ol>
   </section>
 
   <section id="screenshots" aria-labelledby="screenshots-title">
-    <h2 id="screenshots-title">Screenshots</h2>
+    <h2 id="screenshots-title" data-ru="Скриншоты">Screenshots</h2>
     <div class="shots">
       <figure class="glass"><img src="assets/main.png" alt="Main window: text input, selected voice and speak controls" loading="lazy"></figure>
       <figure class="glass"><img src="assets/catalog.png" alt="Voice catalog with search and filters" loading="lazy"></figure>
@@ -85,9 +86,9 @@
   </section>
 
   <section id="responsible-use" aria-labelledby="responsible-title">
-    <h2 id="responsible-title">Responsible use</h2>
+    <h2 id="responsible-title" data-ru="Ответственное использование">Responsible use</h2>
     <div class="glass responsible">
-      <p>Use your own voice or voices you have the right to use. <strong>Do not impersonate real people</strong>, deceive, harass, commit fraud or bypass voice verification. Follow the terms of service of Fish Audio and of the apps you use it with. Voice models from Hugging Face have their own licences — check them before use. The authors are not responsible for misuse.</p>
+      <p data-ru="Используй свой голос или голоса, на которые у тебя есть права. <strong>Не выдавай себя за реальных людей</strong>, не обманывай, не преследуй, не мошенничай и не обходи голосовую верификацию. Соблюдай условия сервиса Fish Audio и приложений, где ты его используешь. У голосовых моделей с Hugging Face свои лицензии — проверь их перед использованием. Авторы не отвечают за злоупотребления.">Use your own voice or voices you have the right to use. <strong>Do not impersonate real people</strong>, deceive, harass, commit fraud or bypass voice verification. Follow the terms of service of Fish Audio and of the apps you use it with. Voice models from Hugging Face have their own licences — check them before use. The authors are not responsible for misuse.</p>
     </div>
   </section>
 </main>
@@ -95,11 +96,12 @@
 <footer>
   <p>
     <a href="https://github.com/coldmoth/ai-voice">GitHub</a> ·
-    <a href="https://github.com/coldmoth/ai-voice/blob/main/LICENSE">License GPL-3.0</a>
+    <a href="https://github.com/coldmoth/ai-voice/blob/main/LICENSE" data-ru="Лицензия GPL-3.0">License GPL-3.0</a>
   </p>
-  <p class="footer-note">Not affiliated with Fish Audio.</p>
+  <p class="footer-note" data-ru="Не связано с Fish Audio.">Not affiliated with Fish Audio.</p>
 </footer>
 
 <script src="bg.js" defer></script>
+<script src="lang.js" defer></script>
 </body>
 </html>

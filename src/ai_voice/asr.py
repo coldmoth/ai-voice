@@ -54,7 +54,7 @@ async def supported_locales(*, helper_path=None, timeout: float = 5.0) -> dict:
             # Reap shell wrappers too: a child can otherwise keep stdout open.
             try:
                 os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):  # macOS: EPERM once the group leader is a zombie
                 pass
             await process.communicate()
     _LOCALES = result

@@ -27,6 +27,6 @@ ai_voice = ["locales/*.json"]
 version = {attr = "ai_voice.__version__"}
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 asyncio_mode = "auto"
 testpaths = ["tests"]

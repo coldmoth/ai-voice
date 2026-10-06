@@ -55,7 +55,7 @@ def test_public_license_and_initial_changelog():
     assert "END OF TERMS AND CONDITIONS" in license_text
     assert "How to Apply These Terms to Your New Programs" in license_text
     changelog = (ROOT / "CHANGELOG.md").read_text()
-    assert "## [0.4.0] - unreleased" in changelog
+    assert "## [0.4.0] - 2026-10-06" in changelog
     for feature in ("First public release", "English and Russian UI", "First-launch setup",
                     "Update checker", "Built-in virtual microphone", "Live voice engine download"):
         assert feature in changelog
@@ -63,7 +63,7 @@ def test_public_license_and_initial_changelog():
 
 def test_version_constant():
     import ai_voice
-    assert ai_voice.__version__ == "0.4.0"
+    assert ai_voice.__version__ == "0.4.1"
 
 
 def test_version_script_matches_package():

@@ -101,7 +101,7 @@ def test_status_contains_version(bridge):
     _server, request = bridge
     status, body = request("GET", "/api/status")
     assert status == 200, body
-    assert json.loads(body)["version"] == "0.4.0"
+    assert json.loads(body)["version"] == __import__("ai_voice").__version__
 
 
 @pytest.mark.parametrize("language", ["en", "ru"])
