@@ -84,9 +84,17 @@ codesign --verify --deep --strict "$app"
 if [ "${1:-}" = "--dmg" ]; then
   stage=$(mktemp -d)
   ditto "$app" "$stage/AI Voice.app"
-  ln -s /Applications "$stage/Applications"
   rm -f "build/AI Voice.dmg"
-  hdiutil create -quiet -volname "AI Voice" -srcfolder "$stage" -format UDZO "build/AI Voice.dmg"
+  if command -v create-dmg >/dev/null; then
+    # Styled window with a drag-to-Applications arrow; falls back to a plain DMG if Finder scripting fails.
+    create-dmg --volname "AI Voice" --background scripts/dmg-bg.png --window-size 660 400 --icon-size 112 \
+      --icon "AI Voice.app" 170 195 --app-drop-link 490 195 --hide-extension "AI Voice.app" \
+      "build/AI Voice.dmg" "$stage" >/dev/null || rm -f "build/AI Voice.dmg"
+  fi
+  if [ ! -f "build/AI Voice.dmg" ]; then
+    ln -s /Applications "$stage/Applications"
+    hdiutil create -quiet -volname "AI Voice" -srcfolder "$stage" -format UDZO "build/AI Voice.dmg"
+  fi
   rm -rf "$stage"
   echo "DMG: build/AI Voice.dmg"
 fi

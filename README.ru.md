@@ -9,6 +9,8 @@
 
 # AI Voice
 
+<p align="center"><a href="https://github.com/coldmoth/ai-voice/releases/latest/download/AI-Voice.dmg"><img src="https://img.shields.io/badge/Скачать%20для%20macOS%20(.dmg)-black?style=for-the-badge&logo=apple&logoColor=white" alt="Скачать для macOS (.dmg)" height="48"></a></p>
+
 Вы говорите (или печатаете), macOS распознаёт вашу речь, [Fish Audio](https://fish.audio) озвучивает её выбранным голосом, а результат уходит в виртуальный микрофон, который любое приложение — звонок, стрим, игра — может использовать как источник звука. Отдельный экспериментальный режим **«Живой голос»** преобразует ваш голос в реальном времени прямо на этом Mac.
 
 ![Демо: выбрать голос, сказать фразу, услышать результат](site/assets/demo.gif)
@@ -35,8 +37,8 @@
 
 ## Установка
 
-1. Скачайте `AI-Voice-X.Y.Z.zip` со страницы [релизов](https://github.com/coldmoth/ai-voice/releases/latest).
-2. Распакуйте архив и перенесите **AI Voice.app** в «Программы».
+1. [Скачайте AI-Voice.dmg](https://github.com/coldmoth/ai-voice/releases/latest/download/AI-Voice.dmg) (все файлы: [релизы](https://github.com/coldmoth/ai-voice/releases/latest)).
+2. Откройте его и перетащите **AI Voice** в «Программы». `.zip` тоже есть на странице релизов.
 3. При первом запуске:
    - macOS 13–14: правый клик по приложению → **Открыть** → **Открыть**.
    - macOS 15+: попробуйте открыть приложение один раз, затем зайдите в **Системные настройки → Конфиденциальность и безопасность** и нажмите **Все равно открыть**.

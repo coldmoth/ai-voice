@@ -26,11 +26,11 @@ def test_release_workflow_builds_and_attaches_artifacts():
     workflow = (ROOT / ".github/workflows/release.yml").read_text()
     for required in (
         "tags: ['v*']", "contents: write", "runs-on: macos-14", "fetch-depth: 0",
-        "brew install uv", "scripts/build-app.sh", 'VERSION="${GITHUB_REF_NAME#v}"',
+        "brew install uv create-dmg", "scripts/build-app.sh --dmg", 'VERSION="${GITHUB_REF_NAME#v}"',
         'ditto -c -k --keepParent "build/AI Voice.app" "AI-Voice-${VERSION}.zip"',
         'shasum -a 256 "AI-Voice-${VERSION}.zip" > "AI-Voice-${VERSION}.zip.sha256"',
         'gh release create "v$VERSION" --notes-file notes.md',
-        '"AI-Voice-${VERSION}.zip" "AI-Voice-${VERSION}.zip.sha256"',
+        'AI-Voice.dmg AI-Voice.dmg.sha256 "AI-Voice-${VERSION}.zip" "AI-Voice-${VERSION}.zip.sha256"',
         "GH_TOKEN: ${{ github.token }}",
     ):
         assert required in workflow
@@ -63,7 +63,7 @@ def test_public_license_and_initial_changelog():
 
 def test_version_constant():
     import ai_voice
-    assert ai_voice.__version__ == "0.4.2"
+    assert ai_voice.__version__ == "0.4.3"
 
 
 def test_version_script_matches_package():
