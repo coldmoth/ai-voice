@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-10-06
+
+### Fixed
+
+- The onboarding window can be dragged by its empty areas.
+- The onboarding permissions step asks for microphone and speech recognition access itself and shows the real status; the System Settings link appears only after a denial.
+
 ## [0.4.4] - 2026-10-06
 
 ### Fixed

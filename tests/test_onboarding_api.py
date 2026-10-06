@@ -3,6 +3,7 @@ import asyncio
 import http.client
 import json
 import threading
+from pathlib import Path
 from http.server import ThreadingHTTPServer
 
 import httpx
@@ -657,3 +658,8 @@ def test_update_state_copies_and_save_failure(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         cat.set_update_state({"last_check": 2})
     assert cat.update_state() == before
+
+
+def test_window_drag_covers_onboarding():
+    swift = (Path(__file__).resolve().parents[1] / "macos" / "Desktop.swift").read_text()
+    assert "'.n-toolbar,.n-traffic-spacer,.ob'" in swift

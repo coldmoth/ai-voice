@@ -63,7 +63,7 @@ def test_public_license_and_initial_changelog():
 
 def test_version_constant():
     import ai_voice
-    assert ai_voice.__version__ == "0.4.4"
+    assert ai_voice.__version__ == "0.4.5"
 
 
 def test_version_script_matches_package():

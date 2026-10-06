@@ -86,9 +86,10 @@ const server = http.createServer(async (req, res) => {
     // 4: permissions.
     await next();
     assert.equal(await title(), en['onboarding.perms.title']);
-    await page.click('#ob-perm-microphone .ob-allow');
-    await page.waitForFunction(t => document.querySelector('#ob-perm-microphone .ob-chip')?.textContent === t, en['onboarding.perms.allowed']);
-    assert.deepEqual(posts.findLast(p => p.path === '/api/permissions/request').body, {kind: 'microphone'});
+    // entering the step requests both permissions without a click
+    for (const kind of ['microphone', 'speech'])
+      await page.waitForFunction(([k, t]) => document.querySelector(`#ob-perm-${k} .ob-chip`)?.textContent === t, [kind, en['onboarding.perms.allowed']]);
+    assert.deepEqual(posts.filter(p => p.path === '/api/permissions/request').map(p => p.body.kind), ['microphone', 'speech']);
 
     // 5: audio device.
     await next();

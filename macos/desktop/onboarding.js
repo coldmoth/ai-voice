@@ -2,7 +2,7 @@
 // (api, t, applyI18n, langName, displayLang, buildKeyForm) plus the window.aiVoiceApp hook object.
 // Dictionary values only go through textContent / attributes.
 (function () {
-  const OB = {step: 1, keys: null, perms: null, devices: null, driver: null, formState: 'idle', pending: {},
+  const OB = {step: 1, keys: null, perms: null, devices: null, driver: null, formState: 'idle', pending: {}, asked: {},
     pollTimer: null, requestDoneAt: 0, token: 0, raf: 0, frames: 0, hideTimer: 0, error: ''};
   const $id = id => document.getElementById(id);
   const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
@@ -113,10 +113,11 @@
     authorized: ['ok', 'onboarding.perms.allowed'], denied: ['bad', 'onboarding.perms.denied'], restricted: ['bad', 'onboarding.perms.denied'],
     not_determined: ['', 'onboarding.perms.not_asked'], unknown: ['', 'onboarding.perms.unknown'],
   };
+  const askable = state => state === 'not_determined' || state === 'unknown';
   function paintPerm(spec) {
     const row = $id('ob-perm-' + spec.kind); if (!row) return;
     const state = OB.perms?.[spec.kind];
-    const key = (CHIP[state] ? state : '') + (state === 'not_determined' ? ':' + !!OB.pending[spec.kind] : '');
+    const key = (CHIP[state] ? state : '') + (askable(state) ? ':' + !!OB.pending[spec.kind] : '');
     if (row.dataset.painted === key) return;
     row.dataset.painted = key;
     const chip = row.querySelector('.ob-chip'), action = row.querySelector('.ob-perm-action');
@@ -125,11 +126,11 @@
     if (!CHIP[state]) return;
     if (CHIP[state][0]) chip.classList.add(CHIP[state][0]);
     chip.textContent = t(CHIP[state][1]);
-    if (state === 'not_determined') {
+    if (askable(state)) {
       const allow = btn('ob-allow', t('onboarding.perms.allow')); allow.disabled = !!OB.pending[spec.kind];
       allow.addEventListener('click', () => requestPerm(spec.kind));
       action.append(allow);
-    } else if (state !== 'authorized') {
+    } else if (state !== 'authorized') { // settings link only after a denial
       action.append(link(spec.href, t('onboarding.perms.open_settings')));
     }
   }
@@ -151,6 +152,12 @@
     OB.pending[kind] = true; PERMS.forEach(paintPerm);
     try { const data = await api('/api/permissions/request', {kind}); OB.pending[kind] = false; OB.requestDoneAt = performance.now(); applyPerms(data); }
     catch { OB.pending[kind] = false; OB.requestDoneAt = performance.now(); PERMS.forEach(paintPerm); }
+  }
+  async function autoRequestPerms() { // show the system dialogs on entering the step, one at a time
+    for (const spec of PERMS) {
+      if (OB.step !== 3 || OB.asked[spec.kind] || !askable(OB.perms?.[spec.kind])) continue;
+      OB.asked[spec.kind] = true; await requestPerm(spec.kind);
+    }
   }
   function stepPerms() {
     const nodes = [title('onboarding.perms.title')];
@@ -326,7 +333,7 @@
     const builders = {1: stepLanguage, 2: stepFish, 3: stepPerms, 4: () => stepDevice(fresh, token), 5: () => stepDone(token)};
     holder.replaceChildren(...builders[OB.step]());
     renderFooter();
-    if (OB.step === 3) { applyPerms(OB.perms); pollPerms(); OB.pollTimer = setInterval(pollPerms, 2000); }
+    if (OB.step === 3) { applyPerms(OB.perms); pollPerms().then(autoRequestPerms); OB.pollTimer = setInterval(pollPerms, 2000); }
     if (fresh && !reduced()) holder.animate([{opacity: 0, transform: 'translateY(8px)'}, {opacity: 1, transform: 'none'}], {duration: 180, easing: 'ease-out'});
     const target = before && holder.querySelector(before);
     (target || $id('ob-title')).focus();

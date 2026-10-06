@@ -128,7 +128,7 @@ final class VoiceApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         configuration.userContentController.addUserScript(
             WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         // The web view covers the transparent title bar, so dragging is forwarded to AppKit.
-        let dragJS = "document.addEventListener('mousedown',function(e){if(e.button!==0)return;var t=e.target;if(!t||!t.closest||!t.closest('.n-toolbar,.n-traffic-spacer'))return;if(t.closest('button,input,select,textarea,a'))return;window.webkit.messageHandlers.drag.postMessage(1);},true);"
+        let dragJS = "document.addEventListener('mousedown',function(e){if(e.button!==0)return;var t=e.target;if(!t||!t.closest||!t.closest('.n-toolbar,.n-traffic-spacer,.ob'))return;if(t.closest('button,input,select,textarea,a,label'))return;window.webkit.messageHandlers.drag.postMessage(1);},true);"
         configuration.userContentController.addUserScript(
             WKUserScript(source: dragJS, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         configuration.userContentController.add(self, name: "drag")
