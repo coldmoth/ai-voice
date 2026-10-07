@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2026-10-07
+
+### Added
+
+- Windows port (beta): Windows 10 (1809+)/11 x64 installer `AI-Voice-Setup.exe` published with each release,
+  VB-CABLE virtual microphone setup, README and site download button.
+  macOS: no changes in this release.
+
 ## [0.4.5] - 2026-10-06
 
 ### Fixed

@@ -105,10 +105,15 @@
     return [title('onboarding.fish.title'), mk('p', 'ob-lead', t('onboarding.fish.lead')), list, form, note];
   }
 
-  const PERMS = [
-    {kind: 'microphone', name: 'onboarding.perms.microphone', reason: 'onboarding.perms.microphone_reason', href: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'},
+  const PERMS_ALL = [
+    {kind: 'microphone', name: 'onboarding.perms.microphone', reason: 'onboarding.perms.microphone_reason', href: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone', hrefWin: 'ms-settings:privacy-microphone'},
     {kind: 'speech', name: 'onboarding.perms.speech', reason: 'onboarding.perms.speech_reason', href: 'x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition'},
   ];
+  function perms() {
+    if (window.aiVoiceApp?.platform?.() !== 'win') return PERMS_ALL;
+    // Windows: speech recognition is not a separate OS permission.
+    return PERMS_ALL.filter(spec => spec.kind !== 'speech').map(spec => ({...spec, href: spec.hrefWin || spec.href}));
+  }
   const CHIP = {
     authorized: ['ok', 'onboarding.perms.allowed'], denied: ['bad', 'onboarding.perms.denied'], restricted: ['bad', 'onboarding.perms.denied'],
     not_determined: ['', 'onboarding.perms.not_asked'], unknown: ['', 'onboarding.perms.unknown'],
@@ -137,38 +142,39 @@
   function applyPerms(data) {
     if (!data) return;
     OB.perms = OB.perms || {};
-    PERMS.forEach(spec => {
+    perms().forEach(spec => {
       const state = data[spec.kind];
       if (OB.pending[spec.kind] && state === 'unknown') return; // a pending request makes polls answer unknown: keep the last state
       if (state !== undefined) OB.perms[spec.kind] = state;
     });
-    PERMS.forEach(paintPerm);
+    perms().forEach(paintPerm);
   }
   async function pollPerms() {
     const started = performance.now();
     try { const data = await api('/api/permissions'); if (started >= OB.requestDoneAt) applyPerms(data); } catch {}
   }
   async function requestPerm(kind) {
-    OB.pending[kind] = true; PERMS.forEach(paintPerm);
+    OB.pending[kind] = true; perms().forEach(paintPerm);
     try { const data = await api('/api/permissions/request', {kind}); OB.pending[kind] = false; OB.requestDoneAt = performance.now(); applyPerms(data); }
-    catch { OB.pending[kind] = false; OB.requestDoneAt = performance.now(); PERMS.forEach(paintPerm); }
+    catch { OB.pending[kind] = false; OB.requestDoneAt = performance.now(); perms().forEach(paintPerm); }
   }
   async function autoRequestPerms() { // show the system dialogs on entering the step, one at a time
-    for (const spec of PERMS) {
+    if (window.aiVoiceApp?.platform?.() === 'win') return; // no native permission bridge on Windows
+    for (const spec of perms()) {
       if (OB.step !== 3 || OB.asked[spec.kind] || !askable(OB.perms?.[spec.kind])) continue;
       OB.asked[spec.kind] = true; await requestPerm(spec.kind);
     }
   }
   function stepPerms() {
     const nodes = [title('onboarding.perms.title')];
-    PERMS.forEach(spec => {
+    perms().forEach(spec => {
       const row = mk('div', 'ob-perm'); row.id = 'ob-perm-' + spec.kind;
       const text = mk('div', 'ob-perm-text');
       text.append(mk('div', 'ob-perm-name', t(spec.name)), mk('p', 'ob-reason', t(spec.reason)));
       row.append(text, mk('span', 'ob-chip'), mk('div', 'ob-perm-action'));
       nodes.push(row);
     });
-    PERMS.forEach(paintPerm);
+    perms().forEach(paintPerm);
     const field = mk('div', 'ob-field');
     const label = mk('label', '', t('settings.asr.speech_language')); label.htmlFor = 'ob-speech-language';
     const select = mk('select'); select.id = 'ob-speech-language';
@@ -208,6 +214,7 @@
     drawDevices();
   }
   function drawDevices() {
+    if (window.aiVoiceApp.platform?.() === 'win') return drawCable();
     const box = $id('ob-devices'); if (!box) return;
     const focused = document.activeElement?.id;
     const outputs = OB.devices?.outputs || [], current = apiPrefs().output_device ?? null;
@@ -289,7 +296,14 @@
   }
   function stepDevice(fresh, token) {
     const box = mk('div'); box.id = 'ob-devices';
-    deviceError = ''; driverError = '';
+    deviceError = ''; driverError = ''; cableError = ''; cableState = '';
+    if (window.aiVoiceApp.platform?.() === 'win') {
+      if (fresh || !OB.devices) {
+        api('/api/voices').then(data => { OB.devices = data.devices || {outputs: []}; }, () => { OB.devices = OB.devices || {outputs: []}; })
+          .then(() => { if (token === OB.token) drawDevices(); });
+      } else queueMicrotask(drawDevices);
+      return [title('onboarding.cable.title'), mk('p', 'ob-lead', t('onboarding.cable.lead')), box];
+    }
     if (fresh) api('/api/driver/status').then(data => { OB.driver = data; }, () => {})
       .then(() => { if (token === OB.token) drawDevices(); });
     if (fresh || !OB.devices) {
@@ -299,14 +313,84 @@
     return [title('onboarding.device.title'), mk('p', 'ob-lead', t('onboarding.device.lead')), box];
   }
 
+  // Windows: Discord hears AI Voice through VB-CABLE (or another virtual cable from the list).
+  const CABLE_SITE = 'https://vb-audio.com/Cable/';
+  let cableError = '', cableState = '', cableAutoChosen = '';
+  function cableDevice() { return (OB.devices?.virtual || [])[0] || null; }
+  async function installCable() {
+    cableError = ''; cableState = 'installing';
+    drawDevices();
+    try {
+      const result = await api('/api/driver/install', {});
+      if (result.status === 'installed' && result.device) {
+        try { await api('/api/devices/rescan', {}); } catch {}
+        const data = await api('/api/voices').catch(() => null);
+        if (data) OB.devices = data.devices || OB.devices;
+        cableState = '';
+        await chooseDevice(result.device);
+        return;
+      }
+      cableState = result.status === 'reboot' ? 'reboot' : '';
+      const failedKeys = {hash_mismatch: 'onboarding.cable.failed_hash', network: 'onboarding.cable.failed_network'};
+      if (failedKeys[result.status]) cableError = t(failedKeys[result.status]);
+    } catch (error) {
+      cableState = '';
+      cableError = error.message;
+    }
+    drawDevices();
+  }
+  function drawCable() {
+    const box = $id('ob-devices'); if (!box) return;
+    const focused = document.activeElement?.id;
+    const cable = cableDevice(), current = apiPrefs().output_device ?? null;
+    const nodes = [];
+    if (cable) {
+      const wrap = mk('div', 'ob-card' + (current === cable ? ' sel' : ''));
+      const main = btn('ob-card-main', '', 'ob-dev-cable');
+      main.setAttribute('role', 'radio'); main.setAttribute('aria-checked', String(current === cable));
+      main.append(mk('span', 'ob-card-title', cable), mk('span', 'ob-chip ok', t('onboarding.device.installed')));
+      main.addEventListener('click', () => chooseDevice(cable));
+      wrap.append(main);
+      nodes.push(wrap);
+      if (!current && cableAutoChosen !== cable) { cableAutoChosen = cable; chooseDevice(cable); }
+      if (current === cable) nodes.push(mk('p', 'ob-hint', t('onboarding.device.discord_hint', {device: cable})));
+    } else if (cableState === 'reboot') {
+      const note = mk('p', 'ob-lead', t('onboarding.cable.reboot'));
+      note.id = 'ob-cable-reboot';
+      nodes.push(note);
+    } else {
+      const wrap = mk('div', 'ob-card');
+      const extra = mk('div', 'ob-card-extra');
+      const note = mk('p', 'ob-hint');
+      note.append(mk('span', '', t('onboarding.cable.note') + ' '), link(CABLE_SITE, 'vb-audio.com'));
+      extra.append(note);
+      const busy = cableState === 'installing';
+      const install = btn('ob-btn-primary', t(busy ? 'onboarding.cable.installing' : 'onboarding.cable.install'), 'ob-cable-install');
+      install.disabled = busy;
+      if (busy) wrap.setAttribute('aria-busy', 'true');
+      install.addEventListener('click', installCable);
+      extra.append(install);
+      if (cableError) {
+        const err = mk('p', 'ob-error'); err.setAttribute('role', 'alert');
+        err.append(mk('span', '', cableError + ' '), link(CABLE_SITE, t('onboarding.cable.manual')));
+        extra.append(err);
+      }
+      wrap.append(extra);
+      nodes.push(wrap);
+    }
+    if (deviceError) { const p = mk('p', 'ob-error', deviceError); p.setAttribute('role', 'alert'); nodes.push(p); }
+    box.replaceChildren(...nodes);
+    if (focused && $id(focused)) $id(focused).focus();
+  }
+
   function stepDone(token) {
     const list = mk('ul', 'ob-check');
     const err = errorLine();
-    Promise.all([api('/api/keys').catch(() => null), api('/api/permissions').catch(() => null)]).then(([keys, perms]) => {
+    Promise.all([api('/api/keys').catch(() => null), api('/api/permissions').catch(() => null)]).then(([keys, permsData]) => {
       if (token !== OB.token) return;
       if (keys) OB.keys = keys;
-      if (perms) applyPerms(perms);
-      const permsOk = PERMS.every(spec => OB.perms?.[spec.kind] === 'authorized');
+      if (permsData) applyPerms(permsData);
+      const permsOk = perms().every(spec => OB.perms?.[spec.kind] === 'authorized');
       const items = [[true, t('onboarding.done.language'), ''],
         [OB.keys?.fish === true, t('onboarding.done.fish'), t('onboarding.done.fish_skipped')],
         [permsOk, t('onboarding.done.perms'), t('onboarding.done.perms_skipped')],

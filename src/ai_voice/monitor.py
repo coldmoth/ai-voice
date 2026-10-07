@@ -14,7 +14,7 @@ import numpy as np
 import sounddevice as sd
 import soxr
 
-from .devices import list_devices, resolve_output
+from .devices import list_devices, resolve_output, stream_extra_settings
 
 
 def _is_finite(value):
@@ -140,6 +140,7 @@ class MonitorSink:
         stream = None
         try:
             stream = sd.OutputStream(device=index, samplerate=rate,
+                                     extra_settings=stream_extra_settings(index),
                                      channels=self.channels, dtype="float32",
                                      latency="low", blocksize=0, callback=self._callback)
         except sd.PortAudioError:
@@ -154,6 +155,7 @@ class MonitorSink:
                         if native != rate:
                             try:
                                 stream = sd.OutputStream(device=index, samplerate=native,
+                                                         extra_settings=stream_extra_settings(index),
                                                          channels=self.channels, dtype="float32",
                                                          latency="low", blocksize=0, callback=self._callback)
                                 rate = native

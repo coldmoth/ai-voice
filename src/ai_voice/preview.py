@@ -33,6 +33,7 @@ from .i18n import t
 from .config import Config, VOICES
 from .fish_tts import FishTTS
 from .secrets import load_key
+from .devices import stream_extra_settings
 
 
 MAX_PREVIEW_SECONDS = 4.0
@@ -226,6 +227,7 @@ class _PreviewSink:
         stream = None
         try:
             stream = sd.OutputStream(device=self.device_index, samplerate=rate,
+                                     extra_settings=stream_extra_settings(self.device_index),
                                      channels=2, dtype="float32", latency=0.1,
                                      blocksize=0, callback=self._callback)
         except sd.PortAudioError:
@@ -246,6 +248,7 @@ class _PreviewSink:
                     info = sd.query_devices(self.device_index)
                     channels = min(2, int(info.get("max_output_channels", 1)))
                     stream = sd.OutputStream(device=self.device_index, samplerate=native,
+                                             extra_settings=stream_extra_settings(self.device_index),
                                              channels=channels, dtype="float32", latency=0.1,
                                              blocksize=0, callback=self._callback)
                     self._channels = channels

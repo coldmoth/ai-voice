@@ -29,7 +29,9 @@ def test_runtime_gate_levels_and_quiet_loud_output(bypass):
                                  close=lambda: None)
         streams.append(result)
         return result
-    sd = SimpleNamespace(InputStream=stream, OutputStream=stream)
+    sd = SimpleNamespace(InputStream=stream, OutputStream=stream,
+                         query_devices=lambda device, **kw: {'hostapi': 0},
+                         query_hostapis=lambda index: {'name': 'MME'})
     def emit(kind, **data):
         events.append((kind, data))
         ready.set()
@@ -186,7 +188,16 @@ def test_streaming_bench_uses_wav_hops_and_sola(wav_audio, tmp_path, monkeypatch
     path = Path(__file__).resolve().parents[1] / 'scripts/vc_bench.py'
     spec = importlib.util.spec_from_file_location('streaming_bench_test', path)
     bench = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(bench)
+    # The portable streaming benchmark must import without POSIX resource.
+    import builtins
+    original_import = builtins.__import__
+    def without_resource(name, *args, **kwargs):
+        if name == 'resource':
+            raise ModuleNotFoundError("No module named 'resource'")
+        return original_import(name, *args, **kwargs)
+    with monkeypatch.context() as imports:
+        imports.setattr(builtins, '__import__', without_resource)
+        spec.loader.exec_module(bench)
     monkeypatch.setattr(bench, '__file__', str(tmp_path / 'scripts/vc_bench.py'))
     directory = tmp_path / 'state/vc-voices/test'
     directory.mkdir(parents=True)

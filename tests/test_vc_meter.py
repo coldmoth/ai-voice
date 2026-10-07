@@ -4,6 +4,29 @@ import pytest
 from ai_voice.vc_meter import InputMeter
 
 
+@pytest.fixture(autouse=True)
+def offline_devices(monkeypatch):
+    from ai_voice import devices
+    monkeypatch.setattr(devices.sd, 'query_devices', lambda device, **kw: {'hostapi': 0})
+    monkeypatch.setattr(devices.sd, 'query_hostapis', lambda index: {'name': 'MME'})
+
+
+def test_meter_wasapi_auto_conversion(monkeypatch):
+    from types import SimpleNamespace
+    from ai_voice import devices
+
+    monkeypatch.setattr(devices, 'sys', SimpleNamespace(platform='win32'))
+    monkeypatch.setattr(devices.sd, 'query_hostapis', lambda index: {'name': 'Windows WASAPI'})
+    monkeypatch.setattr(devices.sd, 'WasapiSettings', lambda **kw: SimpleNamespace(**kw))
+    audio = Audio()
+    meter = InputMeter(sd=audio)
+    try:
+        meter.start(None)
+        assert audio.streams[0].kwargs['extra_settings'].auto_convert is True
+    finally:
+        meter.stop()
+
+
 class Audio:
     def __init__(self):
         self.streams = []

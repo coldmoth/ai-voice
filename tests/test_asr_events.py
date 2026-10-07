@@ -15,6 +15,7 @@ def locales_helper(tmp_path, body):
     return script
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_supported_locales_parses_helper(tmp_path, monkeypatch):
     monkeypatch.setattr(asr, "_LOCALES", None, raising=False)
     report = {"event": "locales", "system": "en-GB", "supported": ["en-GB", "ru-RU"]}
@@ -29,6 +30,7 @@ async def test_supported_locales_parses_helper(tmp_path, monkeypatch):
     "echo '{\"event\":\"locales\",\"system\":\"en-US\",\"supported\":[]}'; exit 3",
     "echo '{\"event\":\"locales\",\"system\":3,\"supported\":[]}'",
     "echo '{\"event\":\"locales\",\"system\":\"en-US\",\"supported\":[3]}'"])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_supported_locales_fallbacks(tmp_path, monkeypatch, body):
     import time
     monkeypatch.setattr(asr, "_LOCALES", None, raising=False)
@@ -39,6 +41,7 @@ async def test_supported_locales_fallbacks(tmp_path, monkeypatch, body):
     assert asr.locales_snapshot() == asr.LOCALES_FALLBACK
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_supported_locales_uses_last_valid_event(tmp_path, monkeypatch):
     monkeypatch.setattr(asr, "_LOCALES", None, raising=False)
     first = {"event": "locales", "system": "en-US", "supported": ["en-US"]}
@@ -71,38 +74,44 @@ def event(kind, **extra):
     event("partial", text="ok", time_ms=10 ** 400), event("final", text="ok", utterance_id=4),
     event("partial", text="ok", time_ms=-1),
     event("partial", text="ok", time_ms=float("nan"))])
-async def test_rejects_invalid_wire_event(tmp_path, line):
+def test_rejects_invalid_wire_event(line):
     with pytest.raises(ASRError):
-        _ = [e async for e in helper(tmp_path, [line]).events()]
+        SpeechASR._parse(line.encode('utf-8'))
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_duplicate_final_is_yielded_once(tmp_path):
     final = event("final", text="Привет")
     events = [e async for e in helper(tmp_path, [event("partial", text="При"), final, final]).events()]
     assert [e["event"] for e in events] == ["partial", "final"]
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_distinct_ids_preserve_repeated_words(tmp_path):
     events = [e async for e in helper(tmp_path, [event("final", text="Да"),
         event("final", text="Да", utterance_id="u2")]).events()]
     assert [e["text"] for e in events] == ["Да", "Да"]
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_nonzero_exit_is_readable(tmp_path):
     with pytest.raises(ASRError, match="exited.*7.*device removed"):
         _ = [e async for e in helper(tmp_path, [], 7, "device removed").events()]
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_authorization_error_is_fatal_and_readable(tmp_path):
     with pytest.raises(ASRError, match="speech_permission.*denied"):
         _ = [e async for e in helper(tmp_path, [event("error", code="speech_permission", message="denied", fatal=True)]).events()]
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_recoverable_error_is_yielded(tmp_path):
     events = [e async for e in helper(tmp_path, [event("error", code="recognition", message="retry", fatal=False)]).events()]
     assert events[0]["fatal"] is False
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_doctor_parses_json_without_starting_capture(tmp_path):
     script = tmp_path / "doctor.py"
     script.write_text('import sys, json\nprint(json.dumps({"event":"doctor", "speech_authorization":"notDetermined", "args":sys.argv[1:]}))\n')
@@ -110,6 +119,7 @@ async def test_doctor_parses_json_without_starting_capture(tmp_path):
     assert report["speech_authorization"] == "notDetermined"
     assert report["args"] == ["--doctor", "--input", "MIC", "--language", "ru-RU"]
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_app_socket_events_and_cleanup(tmp_path):
     script = tmp_path / "socket_helper.py"
     done = tmp_path / "closed"
@@ -129,6 +139,7 @@ Path(sys.argv[1]).write_text("closed")
     assert done.read_text() == "closed"
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_app_socket_doctor(tmp_path):
     script = tmp_path / "socket_doctor.py"
     script.write_text('''import sys, socket, json, os
@@ -141,6 +152,7 @@ s.close()
     report = await SpeechASR(command=[sys.executable, str(script)], launch_app=True).doctor()
     assert report["capture_started"] is False
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_launchservices_zero_exit_still_reports_lost_helper(tmp_path):
     script = tmp_path / "exiting_app.py"
     script.write_text('''import sys, socket, json, os
@@ -153,6 +165,7 @@ s.close()
     with pytest.raises(ASRError, match="stopped"):
         _ = [e async for e in SpeechASR(command=[sys.executable, str(script)], launch_app=True).events()]
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_cancel_pending_app_connection_reaps_launcher(tmp_path):
     import asyncio
     import os
@@ -178,6 +191,7 @@ async def test_cancel_pending_app_connection_reaps_launcher(tmp_path):
         pytest.fail("cancelled app launcher remains running")
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_helper_argv_matches_swift_parser_and_events_flow(tmp_path):
     """Backend must pass exactly the options native/SpeechHelper.swift accepts."""
     script = tmp_path / "argv_helper.py"
@@ -198,6 +212,7 @@ async def test_helper_argv_matches_swift_parser_and_events_flow(tmp_path):
     assert [e["event"] for e in events] == ["ready", "input_gain", "final"]
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 async def test_authorize_only_args(tmp_path):
     script = tmp_path / "authorize.py"
     script.write_text('import sys, json\nprint(json.dumps({"event":"doctor", "args":sys.argv[1:]}))\n')

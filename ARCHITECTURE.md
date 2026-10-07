@@ -86,10 +86,10 @@ Live voice worker (`vc_worker/`, runs under a separate interpreter):
 | `gate.py` | Frame-based noise gate; levels are measured before gain is applied. |
 | `protocol.py` | JSON-lines control service; stdout is exclusively protocol events. |
 | `runtime.py` | Worker-owned sounddevice streams and bounded queues. |
-| `rvc_adapter.py` | RVC v2/RMVPE MPS adapter (MIT upstream). |
-| `seed_adapter.py` | Seed-VC tiny MPS adapter (GPL-3.0 upstream; personal use only). |
+| `rvc_adapter.py` | RVC v2/RMVPE adapter using `pick_device()` (MIT upstream). |
+| `seed_adapter.py` | Seed-VC tiny adapter using `pick_device()` (GPL-3.0 upstream; personal use only). |
 | `streaming.py` | Causal fixed-hop conversion and normalized-correlation SOLA. |
-| `train_mps.py` | Adapted copy of RVC `train.py` (MIT upstream) for Apple silicon MPS training. |
+| `train.py` | Adapted copy of RVC `train.py` (MIT upstream) for CUDA, Apple silicon MPS and Windows CPU training. |
 | `train_runner.py` | Offline RVC pipeline; runs only with the isolated worker interpreter. |
 
 ## Where data lives

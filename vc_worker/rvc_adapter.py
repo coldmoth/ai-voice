@@ -1,9 +1,9 @@
-"""RVC v2/RMVPE MPS adapter migrated from the phase-0 spike (MIT upstream)."""
+"""RVC v2/RMVPE adapter migrated from the phase-0 spike (MIT upstream)."""
 import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from .engines import SPIKE
+from .engines import SPIKE, pick_device
 
 
 def load(voice):
@@ -11,6 +11,7 @@ def load(voice):
     sys.path.insert(0, str(SPIKE / 'src/rvc'))
     os.environ['rmvpe_root'] = str(SPIKE / 'weights/VoiceConversionWebUI')
     import torch
+    device = pick_device()
     import librosa
     import numpy as np
     from infer.module.models import SynthesizerTrnMs768NSFsid
@@ -27,12 +28,12 @@ def load(voice):
     net = SynthesizerTrnMs768NSFsid(*config, is_half=False)
     del net.enc_q
     net.load_state_dict({k: v for k, v in weights.items() if not k.startswith('enc_q.')}, strict=True)
-    net.eval().float().to('mps')
+    net.eval().float().to(device)
     hubert = HubertModelWithFinalProj.from_pretrained(
-        str(SPIKE / 'weights/VoiceConversionWebUI/hubert_base'), local_files_only=True).eval().to('mps')
+        str(SPIKE / 'weights/VoiceConversionWebUI/hubert_base'), local_files_only=True).eval().to(device)
     pipe = Pipeline(sr, SimpleNamespace(x_pad=1, x_query=6, x_center=38, x_max=41,
-                                       is_half=False, device='mps'))
-    pipe.model_rmvpe = RMVPE(str(SPIKE / 'weights/VoiceConversionWebUI/rmvpe.pt'), False, device='mps')
+                                       is_half=False, device=device))
+    pipe.model_rmvpe = RMVPE(str(SPIKE / 'weights/VoiceConversionWebUI/rmvpe.pt'), False, device=device)
     from .f0_safe import f0_features
 
     def get_f0(x, p_len, f0_up_key, f0_method, *args, **kwargs):
@@ -52,6 +53,7 @@ def load(voice):
                 x = librosa.resample(audio, orig_sr=rate, target_sr=16000)
                 out = pipe.pipeline(hubert, net, 0, x, [0., 0., 0.], params.get('pitch_shift', 0),
                                     'rmvpe', index, params.get('index_rate', 0), 1, sr, 0, 1, 'v2', 0.33)
-                torch.mps.synchronize()
+                if device != 'cpu':
+                    getattr(torch, device).synchronize()
                 return out.astype(np.float32) / 32768, sr
     return Engine()

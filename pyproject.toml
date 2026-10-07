@@ -30,3 +30,5 @@ version = {attr = "ai_voice.__version__"}
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["slow: real VC engine CPU smoke (requires the isolated Python 3.10 engine)"]
+addopts = '-m "not slow"'

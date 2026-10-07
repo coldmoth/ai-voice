@@ -173,7 +173,9 @@ if(url.pathname==='/api/vc/train/cancel'){if(vcTraining.queue?.some(v=>v.voice_i
 (async()=>{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
  try{
-  browser=await chromium.launch({executablePath:process.env.AI_VOICE_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+  const macChrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const executablePath=process.env.AI_VOICE_CHROME||(process.platform==='darwin'&&fs.existsSync(macChrome)?macChrome:undefined);
+  browser=await chromium.launch({...(executablePath?{executablePath}:{}),headless:true});
   let uiChecks=37;
   const page=await browser.newPage({viewport:{width:1220,height:820}});const errors=[];
   await page.addInitScript(()=>{window.__hk=[];window.webkit={messageHandlers:{hotkey:{postMessage:m=>window.__hk.push(m)}}};});page.on('pageerror',e=>errors.push(e.message));
@@ -932,7 +934,7 @@ if(url.pathname==='/api/vc/train/cancel'){if(vcTraining.queue?.some(v=>v.voice_i
   assert.deepEqual(requests.findLast(r=>r.path==='/api/vc/check').body,{});
   prefs={...prefs,monitor_enabled:true,monitor_device:'External Headphones'};
   await page.click('#vc-check-btn');await page.waitForFunction(()=>document.querySelector('#vc-check-btn').textContent==='Проверяю…');
-  assert.equal(await page.locator('#vc-check-btn').isDisabled(),true);
+  await page.waitForFunction(()=>document.querySelector('#vc-check-btn').disabled);
   status={...status,vc:{...status.vc,inject:{id:'check-test',state:'done'}}};
   await page.waitForFunction(()=>!document.querySelector('#vc-check-btn').disabled);vcChecks++;
   await page.locator('#vc-text-input').fill('Фраза из текста');
@@ -1091,7 +1093,7 @@ if(url.pathname==='/api/vc/train/cancel'){if(vcTraining.queue?.some(v=>v.voice_i
   await page.focus('#vc-sheet-close');await page.keyboard.press('Shift+Tab');
   assert.equal(await page.evaluate(()=>document.activeElement.id),'vc-import-submit');vcChecks++; // sheetFocusTrap
   await page.focus('#vc-import-drop');
-  const chooser=page.waitForEvent('filechooser',{timeout:2000});await page.keyboard.press('Enter');await chooser;vcChecks++; // dropKeyboard
+  const chooser=page.waitForEvent('filechooser',{timeout:5000});await page.keyboard.press('Enter');await chooser;vcChecks++; // dropKeyboard
   await page.setInputFiles('#vc-import-files',{name:'bad.pth',mimeType:'application/octet-stream',buffer:Buffer.from('model')});
   await page.fill('#vc-import-name','Сбой');await page.click('#vc-import-submit');await page.keyboard.press('Escape');await page.waitForTimeout(250);
   assert.equal(await page.locator('#vc-sheet').evaluate(el=>el.hidden),true);
@@ -1358,6 +1360,30 @@ if(url.pathname==='/api/vc/train/cancel'){if(vcTraining.queue?.some(v=>v.voice_i
   }
   motionChecks++;
   await motionPage.close();
+  // Windows shell: pywebview bridge, hidden swap-hotkey control, Ctrl shortcuts, drag region.
+  const winPage=await browser.newPage({viewport:{width:1220,height:820}});
+  winPage.on('pageerror',e=>errors.push(e.message));
+  await winPage.addInitScript(()=>{window.__winNotify=[];window.pywebview={api:{notify:p=>window.__winNotify.push(p)}};});
+  await winPage.route('**/api/voices',route=>route.fulfill({json:{items:ttsVoices,language:'ru',preferences:prefs,platform:'win',
+    speech_languages:[{id:'en-US'},{id:'ru-RU'}],speech_language:'ru-RU',
+    devices:{inputs:['MIC'],outputs:['AI Voice'],monitors:[],default_input:'MIC',default_output:'AI Voice',virtual:['AI Voice']}}}));
+  await winPage.goto('http://127.0.0.1:'+server.address().port+'/',{waitUntil:'domcontentloaded'});
+  await winPage.waitForFunction(()=>document.querySelectorAll('.voice-row').length===3);
+  assert.equal(await winPage.locator('header.n-toolbar.pywebview-drag-region').count(),1);
+  assert.equal(await winPage.locator('.n-traffic-spacer.pywebview-drag-region').count(),1);uiChecks++;
+  await winPage.evaluate(()=>window.aiVoiceOpenSettings('keys'));
+  await winPage.waitForSelector('#settings-sheet:not([hidden])');await winPage.waitForTimeout(300);
+  assert.equal(await winPage.locator('#swap-hotkey').count(),0);
+  assert.equal(await winPage.locator('#swap-toggle').count(),1);
+  assert.match(await winPage.locator('#settings-btn').getAttribute('title'),/Ctrl/);uiChecks++;
+  await winPage.keyboard.press('Escape');await winPage.waitForTimeout(250);
+  await winPage.waitForSelector('#settings-sheet',{state:'hidden'});
+  await winPage.keyboard.press('Control+Comma');
+  await winPage.waitForSelector('#settings-sheet:not([hidden])');uiChecks++;
+  await winPage.evaluate(()=>window.nativePost('notify',{title:'AI Voice',body:'done'}));
+  assert.deepEqual(await winPage.evaluate(()=>window.__winNotify),[{title:'AI Voice',body:'done'}]);uiChecks++;
+  await winPage.keyboard.press('Escape');
+  await winPage.close();
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({pass:true,uiChecks,settingsChecks,vcChecks,motionChecks,pageErrors:errors,screenshots:['console-qa/desktop-1220.png','console-qa/desktop-850.png','console-qa/desktop-850-scrolled.png'],reach,catalogPreviewedId}));
  }finally{if(browser)await browser.close();server.close();fs.writeFileSync(path.join(out,'requests.json'),JSON.stringify(requests,null,2));}

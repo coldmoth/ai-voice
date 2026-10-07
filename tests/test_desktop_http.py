@@ -456,6 +456,7 @@ def test_check_uses_vc_worker_monitor_preferences(tmp_path, monkeypatch, enabled
 
 @pytest.mark.parametrize("outputs,expected_default", [(["Speakers", "BlackHole 2ch"], "BlackHole 2ch"), (["Speakers"], None)])
 def test_api_voices_device_defaults(monkeypatch, outputs, expected_default):
+    monkeypatch.setattr("sys.platform", "darwin")
     from types import SimpleNamespace
     devices = [{"name": "USB Mic", "max_input_channels": 1, "max_output_channels": 0}]
     devices += [{"name": n, "max_input_channels": 0, "max_output_channels": 2} for n in outputs]

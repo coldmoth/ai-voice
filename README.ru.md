@@ -9,7 +9,7 @@
 
 # AI Voice
 
-<p align="center"><a href="https://github.com/coldmoth/ai-voice/releases/latest/download/AI-Voice.dmg"><img src="https://img.shields.io/badge/Скачать%20для%20macOS%20(.dmg)-black?style=for-the-badge&logo=apple&logoColor=white" alt="Скачать для macOS (.dmg)" height="48"></a></p>
+<p align="center"><a href="https://github.com/coldmoth/ai-voice/releases/latest/download/AI-Voice.dmg"><img src="https://img.shields.io/badge/Скачать%20для%20macOS%20(.dmg)-black?style=for-the-badge&logo=apple&logoColor=white" alt="Скачать для macOS (.dmg)" height="48"></a> <a href="https://github.com/coldmoth/ai-voice/releases/latest/download/AI-Voice-Setup.exe"><img src="https://img.shields.io/badge/Скачать%20для%20Windows%20(бета)%20(.exe)-black?style=for-the-badge&logo=windows&logoColor=white" alt="Скачать для Windows (бета) (.exe)" height="48"></a></p>
 
 Вы говорите (или печатаете), macOS распознаёт вашу речь, [Fish Audio](https://fish.audio) озвучивает её выбранным голосом, а результат уходит в виртуальный микрофон, который любое приложение — звонок, стрим, игра — может использовать как источник звука. Отдельный экспериментальный режим **«Живой голос»** преобразует ваш голос в реальном времени прямо на этом Mac.
 
@@ -46,6 +46,17 @@
    Альтернатива: `xattr -dr com.apple.quarantine "/Applications/AI Voice.app"`.
 
 **Почему появляется предупреждение?** Приложение не нотаризовано — за ним не стоит платный аккаунт Apple Developer. Оно собирается из этого репозитория через GitHub Actions (см. [запуски релизного процесса](https://github.com/coldmoth/ai-voice/actions/workflows/release.yml)), а к каждому релизу прилагается файл `.sha256`, по которому можно проверить скачанное.
+
+## Windows (бета)
+
+Порт для Windows в стадии бета. Скачайте [AI-Voice-Setup.exe](https://github.com/coldmoth/ai-voice/releases/latest/download/AI-Voice-Setup.exe) (все файлы: [релизы](https://github.com/coldmoth/ai-voice/releases/latest)).
+
+- **Требования:** Windows 10 (1809+) или 11, x64. Видеокарта NVIDIA не обязательна — без неё «Живой голос» работает на процессоре с большой задержкой. Поддержка CUDA в бете и нами не проверена.
+- **SmartScreen:** установщик не подписан, поэтому Windows покажет предупреждение. Нажмите **«Подробнее» → «Выполнить в любом случае»**.
+- Установщику нужен [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (предустановлен в Windows 11 и обновлённой Windows 10); для импорта и обучения собственных голосов нужен `ffmpeg` в PATH (например, `winget install Gyan.FFmpeg`).
+- **Виртуальный микрофон:** по запросу приложение скачивает и устанавливает [VB-CABLE](https://vb-audio.com/Cable/) (бесплатный donationware-драйвер от VB-Audio); может понадобиться перезагрузка. В Discord выберите микрофон **«CABLE Output (VB-Audio Virtual Cable)»**.
+- Горячая клавиша смены голоса на Windows пока недоступна.
+- Нашли проблему? Напишите в [GitHub Issues](https://github.com/coldmoth/ai-voice/issues).
 
 ## Первый запуск
 

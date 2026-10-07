@@ -19,7 +19,7 @@ import numpy as np
 import sounddevice as sd
 import soxr
 
-from .devices import resolve_output
+from .devices import resolve_output, stream_extra_settings
 
 
 class PCMBuffer:
@@ -304,6 +304,7 @@ class Playback:
         index = resolve_output(self.device)
         try:
             stream = sd.OutputStream(device=index, samplerate=self.sample_rate,
+                                     extra_settings=stream_extra_settings(index),
                                      channels=2, dtype="float32", latency="low",
                                      blocksize=0, callback=self.callback)
             try:

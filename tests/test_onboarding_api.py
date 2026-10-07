@@ -220,7 +220,8 @@ def test_onboarding_update_validates(tmp_path, monkeypatch):
             cat.update({"onboarding_completed": bad})
 
 
-def test_virtual_outputs():
+def test_virtual_outputs(monkeypatch):
+    monkeypatch.setattr("sys.platform", "darwin")
     from ai_voice.devices import virtual_outputs
     names = ["MacBook Speakers", "BlackHole 2ch", "AI Voice Mic", "Loopback Audio", "AI Voice"]
     assert virtual_outputs(names) == ["BlackHole 2ch", "AI Voice Mic", "Loopback Audio", "AI Voice"]
@@ -232,6 +233,8 @@ def test_virtual_outputs():
 def driver_bridge(bridge, monkeypatch, tmp_path):
     from types import SimpleNamespace
     from ai_voice import desktop
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr(driver, "install_cable", lambda **_: pytest.fail("Windows installer in HAL test"))
     server, request = bridge
     calls = []
     state = {"active": False, "monitor_active": False}

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/windows-port, "feat/win-*"]
   pull_request:
     branches: [main]
 
@@ -24,3 +24,140 @@ jobs:
         run: npm i --no-save playwright@1 && npx playwright install chromium
       - name: Desktop UI tests
         run: NODE_PATH=$PWD/node_modules node tests/desktop-ui.cjs
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          architecture: x64
+      - name: Install test dependencies
+        run: python -m pip install -r scripts/requirements-app.txt "pytest>=8" "pytest-asyncio>=1"
+      - uses: LABSN/sound-ci-helpers@v1
+      - name: Show audio devices and host APIs
+        run: python -c "import sounddevice as sd; print(sd.query_devices()); print(sd.query_hostapis())"
+      - name: Python tests
+        run: python -m pytest -q -o faulthandler_timeout=300
+      - name: Check desktop JavaScript
+        if: success() || failure()
+        run: node --check macos/desktop/app.js
+      - name: Install Playwright
+        if: success() || failure()
+        run: npm i --no-save playwright@1 && npx playwright install chromium
+      - name: Desktop UI tests
+        if: success() || failure()
+        run: |
+          $env:NODE_PATH = Join-Path $PWD "node_modules"
+          node tests/desktop-ui.cjs
+      - name: Prepare pinned RVC smoke runtime
+        if: success() || failure()
+        env:
+          PYTHONPATH: src
+          AI_VOICE_VC_RUNTIME: ${{ runner.temp }}/vc-cpu-smoke
+        run: |
+          @'
+          import shutil
+          import httpx
+          from ai_voice.vc_engine import Installer
+
+          installer = Installer()
+          wanted = {"rvc-src", "weight-1", "weight-2", "weight-3", "weight-4"}
+          entries = [entry for entry in installer.manifest["files"] if entry["id"] in wanted]
+          assert {entry["id"] for entry in entries} == wanted
+          with httpx.Client(timeout=120) as client:
+              for entry in entries:
+                  print("Preparing", entry["id"], flush=True)
+                  archive = installer._download(client, entry)
+                  destination = installer._safe(installer.root, entry["dest"])
+                  if entry.get("extract"):
+                      installer._extract(archive, destination, entry.get("strip", 0), entry.get("keep"))
+                  else:
+                      destination.parent.mkdir(parents=True, exist_ok=True)
+                      shutil.copyfile(archive, destination)
+          '@ | python -
+      - uses: actions/setup-python@v5
+        if: success() || failure()
+        with:
+          python-version: "3.10"
+          architecture: x64
+      - name: Install CPU VC engine from Windows lock
+        if: success() || failure()
+        run: |
+          python -m venv "${{ runner.temp }}/vc-cpu-venv"
+          $enginePython = "${{ runner.temp }}/vc-cpu-venv/Scripts/python.exe"
+          $cpuLock = "${{ runner.temp }}/engine-requirements-cpu.lock"
+          (Get-Content vc_worker/engine-requirements-win.lock -Raw).Replace('torch==2.8.0+cu128', 'torch==2.8.0+cpu').Replace('torchaudio==2.8.0+cu128', 'torchaudio==2.8.0+cpu') | Set-Content $cpuLock -Encoding utf8
+          & $enginePython -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r $cpuLock "pytest>=8,<9" "pytest-asyncio>=1"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: VC CPU smoke (engine Python 3.10)
+        if: success() || failure()
+        env:
+          AI_VOICE_VC_RUNTIME: ${{ runner.temp }}/vc-cpu-smoke
+        run: |
+          & "${{ runner.temp }}/vc-cpu-venv/Scripts/python.exe" -m pytest -m slow tests/test_vc_cpu_smoke.py
+
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Inno Setup 6
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --version=6.4.3 --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          }
+          if (-not (Test-Path $iscc)) { throw 'ISCC.exe not found' }
+      - name: Build Windows installer
+        shell: pwsh
+        run: scripts/build-win.ps1
+      - name: Install, smoke and uninstall (preserve user data)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = @(Get-ChildItem build/win/AI-Voice-Setup-*.exe)
+          if ($setup.Count -ne 1) { throw 'Expected exactly one installer' }
+          $install = Start-Process $setup[0].FullName -ArgumentList '/VERYSILENT', '/CURRENTUSER', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Install failed: $($install.ExitCode)" }
+          $app = Join-Path $env:LOCALAPPDATA 'Programs/AI Voice'
+          $data = Join-Path $env:APPDATA 'AI Voice'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          $sentinel = Join-Path $data 'installer-smoke-sentinel.txt'
+          Set-Content $sentinel 'preserve-me' -Encoding ascii
+          try {
+            # Run outside the checkout with isolated import paths. python.exe
+            # gives the CI job stdout, unlike the shortcut's pythonw.exe.
+            Push-Location $app
+            try {
+              $output = & './python/python.exe' -X utf8 -m ai_voice.winshell --smoke
+              if ($LASTEXITCODE -ne 0 -or ($output -join "`n").Trim() -ne 'ok') {
+                throw 'Installed shell smoke failed (expected ok and exit 0)'
+              }
+              Write-Output $output
+              & './python/python.exe' -X utf8 -c "import webview; from ai_voice import paths; assert (paths.WEB / 'index.html').is_file(); assert (paths.ROOT / 'vc_worker' / 'engine-manifest.json').is_file()"
+              if ($LASTEXITCODE -ne 0) { throw 'Installed UI/runtime assets missing' }
+            } finally { Pop-Location }
+            $shell = New-Object -ComObject WScript.Shell
+            $shortcut = $shell.CreateShortcut((Join-Path $env:APPDATA 'Microsoft/Windows/Start Menu/Programs/AI Voice/AI Voice.lnk'))
+            if ($shortcut.TargetPath -ne (Join-Path $app 'python/pythonw.exe') -or
+                $shortcut.Arguments -ne '-X utf8 -m ai_voice.winshell' -or
+                $shortcut.WorkingDirectory -ne $app) { throw 'Start menu shortcut mismatch' }
+          } finally {
+            $uninstall = Start-Process (Join-Path $app 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+            if ($uninstall.ExitCode -ne 0) { throw "Uninstall failed: $($uninstall.ExitCode)" }
+          }
+          if (-not (Test-Path $data) -or -not (Test-Path $sentinel) -or
+              (Get-Content $sentinel -Raw).Trim() -ne 'preserve-me') { throw 'Uninstall removed user data' }
+          if (Test-Path (Join-Path $app 'python/python.exe')) { throw 'Uninstall left the app runtime behind' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: build/win/AI-Voice-Setup-*.exe
+          if-no-files-found: error

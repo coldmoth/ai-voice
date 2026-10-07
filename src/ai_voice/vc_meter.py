@@ -26,10 +26,12 @@ class InputMeter:
         self.stop()
         stream = None
         try:
+            from .devices import stream_extra_settings
             if self.sd is None:
                 import sounddevice
                 self.sd = sounddevice
             stream = self.sd.InputStream(device=device, samplerate=self.sample_rate,
+                extra_settings=stream_extra_settings(device, kind="input"),
                 channels=1, dtype='float32', blocksize=self.block, callback=self._callback)
             stream.start()
         except Exception as exc:

@@ -7,6 +7,7 @@ import shutil
 import signal
 import statistics
 import subprocess
+import sys
 import threading
 import time
 import tempfile
@@ -83,9 +84,10 @@ class VcTrainer:
         self.queue_path = self.data / 'vc-train-queue.json'
         self.stats_path = self.data / 'vc-train-stats.json'
         self.pid_path = self.data / 'vc-train.pid'
+        self.store._before_delete = self._cancel_deleted
         self._kill_orphan()
         try:
-            saved = json.loads(self.queue_path.read_text())
+            saved = json.loads(self.queue_path.read_text(encoding='utf-8'))
             if isinstance(saved, dict):
                 entries = saved.get('queue') if isinstance(saved.get('queue'), list) else []
                 if saved.get('user_paused') is True:
@@ -116,7 +118,7 @@ class VcTrainer:
     def _save_json(path, value):
         fd, name = tempfile.mkstemp(prefix='.' + path.name, dir=path.parent)
         try:
-            with os.fdopen(fd, 'w') as stream:
+            with os.fdopen(fd, 'w', encoding='utf-8') as stream:
                 json.dump(value, stream, ensure_ascii=False, allow_nan=False)
                 stream.flush()
                 os.fsync(stream.fileno())
@@ -137,7 +139,19 @@ class VcTrainer:
 
     def _kill_orphan(self):
         try:
-            pgid = int(self.pid_path.read_text())
+            pgid = int(self.pid_path.read_text(encoding='utf-8'))
+            if sys.platform == 'win32':
+                if pgid <= 1 or pgid == os.getpid():
+                    return
+                # Verify the command line before acting on a potentially reused PID.
+                result = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command',
+                                         f"$p = Get-CimInstance Win32_Process -Filter 'ProcessId = {pgid}'; "
+                                         "if ($p.CommandLine -like '*train_runner*') { 'train_runner' }"],
+                                        capture_output=True, text=True, timeout=5)
+                if result.returncode == 0 and 'train_runner' in result.stdout:
+                    subprocess.run(['taskkill', '/T', '/F', '/PID', str(pgid)],
+                                   capture_output=True, timeout=5)
+                return
             if pgid <= 1 or pgid == os.getpgrp():
                 return
             os.kill(pgid, 0)
@@ -158,7 +172,7 @@ class VcTrainer:
 
     def _stats(self):
         try:
-            values = json.loads(self.stats_path.read_text())
+            values = json.loads(self.stats_path.read_text(encoding='utf-8'))
             return [float(k) for k in values[-3:] if type(k) in (int, float) and math.isfinite(k) and k > 0]
         except (OSError, ValueError, TypeError):
             return []
@@ -169,6 +183,8 @@ class VcTrainer:
         return math.ceil(epochs * k * speech_seconds / 60 / 60) + 2
 
     def _validate(self, voice_id):
+        if voice_id in self.store._deleting:
+            raise VcTrainError(t("errors.training_other_voice"))
         meta = self.store.get(voice_id)
         directory = self.store._directory(voice_id)
         if meta['kind'] != 'zeroshot' or meta.get('status') != 'ready':
@@ -261,6 +277,10 @@ class VcTrainer:
                     '--voice-dir', str(directory), '--epochs', str(total_epochs),
                     '--batch', str(self.batch), '--rvc-src', self.rvc_src,
                     '--pretrained-dir', self.pretrained_dir]
+            process_options = {'start_new_session': True}
+            if sys.platform == 'win32':
+                args = args[6:]
+                process_options = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP}
             try:
                 env = {**os.environ, 'SYSTEM_VERSION_COMPAT': '0', 'OMP_NUM_THREADS': '4'}
                 try:
@@ -273,9 +293,9 @@ class VcTrainer:
                 if relinked:
                     log.write('libomp linked to torch: ' + ', '.join(relinked) + '\n')
                 log.flush()
-                process = self.popen(args, shell=False, start_new_session=True,
+                process = self.popen(args, shell=False, **process_options,
                                      env=env,
-                                     stdout=subprocess.PIPE, stderr=log, text=True,
+                                     stdout=subprocess.PIPE, stderr=log, text=True, encoding='utf-8',
                                      bufsize=1)
             except Exception as exc:
                 log.close()
@@ -294,7 +314,7 @@ class VcTrainer:
                                   state='running', error=None)}
             self._job = job
             try:
-                self.pid_path.write_text(str(process.pid))
+                self.pid_path.write_text(str(process.pid), encoding='utf-8')
                 self._persist()
             except Exception as exc:
                 self._terminate(job)
@@ -321,6 +341,8 @@ class VcTrainer:
 
     def _exists(self, job):
         try:
+            if job['status']['voice_id'] in self.store._deleting:
+                return False
             self.store.get(job['status']['voice_id'])
             return job['directory'].stat().st_ino == job['identity']
         except (OSError, VcStoreError):
@@ -329,6 +351,22 @@ class VcTrainer:
     def _terminate(self, job):
         with job['terminate_lock']:
             process = job['process']
+            if sys.platform == 'win32':
+                try:
+                    # taskkill may return non-zero if the process has already exited.
+                    subprocess.run(['taskkill', '/T', '/F', '/PID', str(process.pid)],
+                                   capture_output=True, timeout=5)
+                except (OSError, subprocess.SubprocessError):
+                    process.kill()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    try:
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        pass
+                return
             deadline = self.clock() + 3
             try:
                 os.killpg(process.pid, signal.SIGTERM)
@@ -354,12 +392,23 @@ class VcTrainer:
             job['status'].update(state=state, error=error, eta_s=None)
             job['stop'].set()
             self._resumed.set()
-            if job['paused_at'] is not None:
+            if job['paused_at'] is not None and sys.platform != 'win32':
                 try:
                     os.killpg(job['process'].pid, signal.SIGCONT)
                 except ProcessLookupError:
                     pass
         self._terminate(job)
+
+    def _cancel_deleted(self, voice_id):
+        with self._lock:
+            self.remove_queued(voice_id)
+            job = self._job
+            active = job and job['status']['voice_id'] == voice_id and not job['finished'].is_set()
+        if active:
+            self._stop(job, 'cancelled')
+            job['finished'].wait()
+        with self._lock:
+            self._clear_user_pause_if_idle()
 
     def cancel(self, voice_id=None):
         with self._lock:
@@ -414,10 +463,12 @@ class VcTrainer:
             self._resumed.clear()
             job = self._job
             if job and job['status']['state'] == 'running' and not job['finished'].is_set():
-                try:
-                    os.killpg(job['process'].pid, signal.SIGSTOP)
-                except ProcessLookupError:
-                    return True
+                # Phase 1 Windows pause gates the queue and reader, not native execution.
+                if sys.platform != 'win32':
+                    try:
+                        os.killpg(job['process'].pid, signal.SIGSTOP)
+                    except ProcessLookupError:
+                        return True
                 job['paused_at'] = self.clock()
                 job['status'].update(state='paused', stage_label=self._pause_label())
             return True
@@ -436,10 +487,11 @@ class VcTrainer:
                 duration = now - job['paused_at']
                 job['paused_seconds'] += duration
                 job['paused_at'] = None
-                try:
-                    os.killpg(job['process'].pid, signal.SIGCONT)
-                except ProcessLookupError:
-                    pass
+                if sys.platform != 'win32':
+                    try:
+                        os.killpg(job['process'].pid, signal.SIGCONT)
+                    except ProcessLookupError:
+                        pass
                 label = t(STAGES[job['status']['stage']][0])
                 job['status'].update(state='running', stage_label=label)
             self._start_next()
@@ -566,7 +618,10 @@ class VcTrainer:
             else:
                 self._publish(job)
         except Exception:
-            self._stop(job, 'failed', t("errors.training_finish"))
+            try:
+                self._stop(job, 'failed', t("errors.training_finish"))
+            except Exception:
+                job['status'].update(state='failed', error=t("errors.training_finish"), eta_s=None)
         finally:
             job['stop'].set()
             # Never remove files of a replacement directory with the same ID.
@@ -575,13 +630,20 @@ class VcTrainer:
                     self._cleanup(job['directory'], preserve_checkpoint=job['status']['state'] == 'cancelled')
             except OSError:
                 pass
-            job['process'].stdout.close()
-            job['log'].close()
-            with self._lock:
-                self.pid_path.unlink(missing_ok=True)
-                job['finished'].set()
-                if not self._closed:
-                    self._persist()
+            except Exception:
+                job['status'].update(state='failed', error=t("errors.training_finish"), eta_s=None)
+            try:
+                job['process'].stdout.close()
+            finally:
+                try:
+                    job['log'].close()
+                finally:
+                    with self._lock:
+                        # Wake cancel/close even if closing files or saving state fails.
+                        job['finished'].set()
+                        self.pid_path.unlink(missing_ok=True)
+                        if not self._closed:
+                            self._persist()
             if self.on_done:
                 try:
                     self.on_done(job['status']['voice_id'], job['status']['state'])

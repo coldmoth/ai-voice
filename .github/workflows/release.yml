@@ -31,3 +31,40 @@ jobs:
           shasum -a 256 AI-Voice.dmg > AI-Voice.dmg.sha256
           awk "/^## \\[${VERSION}\\]/{f=1;next}/^## \\[/{f=0}f" CHANGELOG.md > notes.md
           gh release create "v$VERSION" --notes-file notes.md AI-Voice.dmg AI-Voice.dmg.sha256 "AI-Voice-${VERSION}.zip" "AI-Voice-${VERSION}.zip.sha256"
+
+  windows:
+    needs: release
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Inno Setup 6
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --version=6.4.3 --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          }
+          if (-not (Test-Path $iscc)) { throw 'ISCC.exe not found' }
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          scripts/build-win.ps1 -Version $version
+      - name: Upload Windows installer to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          gh release upload "$env:GITHUB_REF_NAME" "build/win/AI-Voice-Setup-$version.exe" --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Windows release upload failed' }
+          $installer = "AI-Voice-Setup-$version.exe"
+          $hash = (Get-FileHash "build/win/$installer" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $installer" | Set-Content "build/win/$installer.sha256" -Encoding ascii
+          gh release upload "$env:GITHUB_REF_NAME" "build/win/$installer.sha256" --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Windows checksum upload failed' }
+          Copy-Item "build/win/AI-Voice-Setup-$version.exe" "build/win/AI-Voice-Setup.exe"
+          gh release upload "$env:GITHUB_REF_NAME" "build/win/AI-Voice-Setup.exe" --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Windows fixed-name release upload failed' }

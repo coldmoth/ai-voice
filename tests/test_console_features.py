@@ -99,7 +99,8 @@ def test_default_input_name_returns_none_on_error(monkeypatch):
     ([], None),
     (["Speakers", "ai voice", "AI Voice Mic Extra", "BlackHole 16ch"], None),
 ])
-def test_preferred_virtual_output_exact_priority(names, expected):
+def test_preferred_virtual_output_exact_priority(monkeypatch, names, expected):
+    monkeypatch.setattr(sys, "platform", "darwin")
     assert mod("devices").preferred_virtual_output(names) == expected
 
 
@@ -157,6 +158,7 @@ async def test_start_without_output_fails_before_lease(tmp_path, monkeypatch, mo
 @pytest.mark.parametrize("mode", ["mic", "text"])
 @pytest.mark.parametrize("explicit", [False, True])
 async def test_start_resolves_devices_without_saving_defaults(tmp_path, monkeypatch, mode, explicit):
+    monkeypatch.setattr(sys, "platform", "darwin")
     control_module = mod("desktop_control")
     input_name = "MIC" if explicit else "MacBook Pro Microphone"
     output_name = "AI Voice" if explicit else "BlackHole 2ch"
@@ -298,6 +300,8 @@ class FakePortAudioError(Exception):
 
 def install_fake_sounddevice(monkeypatch, *, devices):
     """Install a sounddevice stub that returns a fixed device list."""
+    from ai_voice import devices as audio_devices
+    monkeypatch.setattr(audio_devices, 'sys', types.SimpleNamespace(platform='darwin'))
     fake_sd = types.SimpleNamespace()
     fake_sd.PortAudioError = FakePortAudioError
     fake_sd.query_devices = lambda *a, **kw: (devices(*a, **kw) if callable(devices) else devices)
@@ -323,6 +327,7 @@ def _isolate_voices():
 @pytest.fixture
 def preview_module(monkeypatch, tmp_path):
     """Reload preview module with a stubbed sounddevice + safe load_key."""
+    monkeypatch.setattr(sys, "platform", "darwin")
     install_fake_sounddevice(monkeypatch, devices=[
         {"name": "Headphones", "max_output_channels": 2, "default_samplerate": 48000},
         {"name": "AI Voice", "max_output_channels": 2, "default_samplerate": 48000},

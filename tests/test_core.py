@@ -1,5 +1,6 @@
 import importlib
 import subprocess
+import sys
 
 import pytest
 
@@ -22,6 +23,7 @@ def test_invalid_configuration_fails_early(settings):
         module("config").Config(**settings)
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_explicit_voice_resolves_to_reference_id():
     config = module("config").Config(voice="db89e349112e44dca6820e0cb2d414cc")
     assert config.reference_id == "db89e349112e44dca6820e0cb2d414cc"
@@ -49,6 +51,7 @@ def test_invalid_or_control_event_never_generates_speech(event):
 
 
 @pytest.mark.parametrize("status,stdout,want", [(0, "hidden\n", "hidden"), (44, "", None), (1, "secret on failure", None), (0, "", None)])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_keychain_requires_success_and_nonempty_value(monkeypatch, status, stdout, want):
     secrets = module("secrets")
     calls = []

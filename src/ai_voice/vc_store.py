@@ -43,6 +43,8 @@ class VcStore:
         self.max_import_bytes = max_import_bytes
         self.timeout = timeout
         self._lock = threading.RLock()
+        self._deleting = set()
+        self._before_delete = None
         for meta in self.list():
             if meta.get('status') == 'processing':
                 directory = self._directory(meta['id'])
@@ -329,7 +331,16 @@ class VcStore:
     def delete(self, voice_id):
         with self._lock:
             self.get(voice_id)
-            shutil.rmtree(self._directory(voice_id))
+            self._deleting.add(voice_id)
+        try:
+            # Do not hold the store lock while waiting for the training reader.
+            if self._before_delete is not None:
+                self._before_delete(voice_id)
+            with self._lock:
+                shutil.rmtree(self._directory(voice_id))
+        finally:
+            with self._lock:
+                self._deleting.discard(voice_id)
 
     def mark_trained(self, voice_id):
         """Publish metadata only after a nonempty model has been installed."""

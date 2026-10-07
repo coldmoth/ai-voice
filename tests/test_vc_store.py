@@ -17,10 +17,15 @@ from ai_voice.vc_store import ROOT, VcStore, VcStoreError
 
 
 @pytest.fixture
-def store(tmp_path):
-    fake = tmp_path / 'python-fake'
-    fake.write_text(f'#!{sys.executable}\nimport sys\nassert sys.argv[1] == "-c"\nassert "weights_only=True" in sys.argv[2]\nassert \'map_location="cpu"\' in sys.argv[2]\nsys.exit(0)\n')
-    fake.chmod(0o755)
+def store(tmp_path, monkeypatch):
+    fake = tmp_path / 'python-fake.py'
+    fake.write_text('import sys\nassert sys.argv[1] == "-c"\nassert "weights_only=True" in sys.argv[2]\nassert \'map_location="cpu"\' in sys.argv[2]\nsys.exit(0)\n', encoding='utf-8')
+    run = subprocess.run
+    def portable_run(args, **kwargs):
+        if args[0] in (str(fake), str(tmp_path / 'ffmpeg-fake.py')):
+            args = [sys.executable, *args]
+        return run(args, **kwargs)
+    monkeypatch.setattr(subprocess, 'run', portable_run)
     return VcStore(tmp_path / 'voices', python_path=fake)
 
 
@@ -129,14 +134,14 @@ def test_limit_counts_reads_not_header(store, tmp_path, monkeypatch):
 def test_pickle_rejection(store, model):
     import pickle
     model.write_bytes(pickle.dumps(os.system))
-    Path(store.python_path).write_text(f'#!{sys.executable}\nimport sys\nsys.exit(1)\n')
+    Path(store.python_path).write_text('import sys\nsys.exit(1)\n', encoding='utf-8')
     with pytest.raises(VcStoreError, match='pickle'):
         store.create('Voice', model_path=model)
     empty(store)
 
 
 def test_model_timeout(store, model):
-    Path(store.python_path).write_text(f'#!{sys.executable}\nimport time\ntime.sleep(5)\n')
+    Path(store.python_path).write_text('import time\ntime.sleep(5)\n', encoding='utf-8')
     store.timeout = 0.05
     with pytest.raises(VcStoreError, match='Timed out'):
         store.create('Voice', model_path=model)
@@ -337,9 +342,8 @@ def test_all_silence_rejected(audio_store, tmp_path):
 
 
 def test_ffmpeg_timeout(store, tmp_path):
-    fake = tmp_path / 'ffmpeg-fake'
-    fake.write_text(f'#!{sys.executable}\nimport time\ntime.sleep(5)\n')
-    fake.chmod(0o755)
+    fake = tmp_path / 'ffmpeg-fake.py'
+    fake.write_text('import time\ntime.sleep(5)\n', encoding='utf-8')
     store.ffmpeg_path = str(fake)
     store.timeout = 0.05
     with pytest.raises(VcStoreError, match='Timed out'):

@@ -6,6 +6,7 @@ AI_VOICE_HELPER, AI_VOICE_HOME (~/Library/Application Support/AI Voice) and
 AI_VOICE_VC_RUNTIME, so nothing is read from or written into the bundle.
 """
 import os
+import sys
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -17,17 +18,34 @@ def _env_path(name, default):
 
 
 ROOT = _env_path("AI_VOICE_RESOURCES", _REPO)
-DATA = _env_path("AI_VOICE_HOME", ROOT / "state")
+
+
+def app_home() -> Path:
+    if sys.platform == "win32":
+        return _env_path("AI_VOICE_HOME", Path(os.environ["APPDATA"]) / "AI Voice")
+    return _env_path("AI_VOICE_HOME", ROOT / "state")
+
+
+def vc_runtime_home() -> Path:
+    if sys.platform == "win32":
+        return _env_path("AI_VOICE_VC_RUNTIME", Path(os.environ["LOCALAPPDATA"]) / "AI Voice" / "vc-runtime")
+    return _env_path("AI_VOICE_VC_RUNTIME", ROOT / "state" / "vc-spike")
+
+
+DATA = app_home()
 WEB = _env_path("AI_VOICE_WEB", ROOT / "macos" / "desktop")
 HELPER_APP = _env_path("AI_VOICE_HELPER", ROOT / "build" / "SpeechHelper.app")
 HELPER_BINARY = HELPER_APP / "Contents" / "MacOS" / "SpeechHelper"
-CONFIG_FILE = DATA / "config.toml" if os.environ.get("AI_VOICE_HOME") else ROOT / "config.toml"
+CONFIG_FILE = DATA / "config.toml" if sys.platform == "win32" or os.environ.get("AI_VOICE_HOME") else ROOT / "config.toml"
 
 # Experimental voice conversion: a Python 3.10 + torch environment and model
 # sources/weights that are too large to ship inside the app.
 _VC = os.environ.get("AI_VOICE_VC_RUNTIME")
 VC_PYTHON = Path(_VC) / "venv" / "bin" / "python" if _VC else ROOT / ".venv-vc" / "bin" / "python"
 VC_SPIKE = Path(_VC) / "spike" if _VC else ROOT / "state" / "vc-spike"
+if sys.platform == "win32":
+    VC_PYTHON = vc_runtime_home() / "venv" / "Scripts" / "python.exe"
+    VC_SPIKE = vc_runtime_home() / "spike"
 
 
 def ensure_data_dir():

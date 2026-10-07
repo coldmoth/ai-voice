@@ -24,7 +24,8 @@ class _FakeStream:
     started = 0
     failed_starts = 0
 
-    def __init__(self, *, device, samplerate, channels, dtype, latency, blocksize, callback):
+    def __init__(self, *, device, samplerate, channels, dtype, latency, blocksize, callback,
+                 extra_settings=None):
         self.device = device
         self.samplerate = samplerate
         self.channels = channels
@@ -32,6 +33,7 @@ class _FakeStream:
         self.latency = latency
         self.blocksize = blocksize
         self.callback = callback
+        self.extra_settings = extra_settings
         type(self).opened += 1
         type(self).last_instance = self
         self._stopped = False
@@ -69,7 +71,10 @@ class _FakeSoundDevice:
 
 
 @pytest.fixture(autouse=True)
-def _reset_fake_stream_counters():
+def _reset_fake_stream_counters(monkeypatch):
+    from types import SimpleNamespace
+    from ai_voice import devices
+    monkeypatch.setattr(devices, "sys", SimpleNamespace(platform="darwin"))
     _FakeStream.opened = _FakeStream.closed = _FakeStream.started = _FakeStream.failed_starts = 0
     yield
     _FakeStream.opened = _FakeStream.closed = _FakeStream.started = _FakeStream.failed_starts = 0
@@ -122,6 +127,7 @@ def test_monitor_start_opens_stream_with_requested_rate(monkeypatch):
     assert _FakeStream.started == 1
     assert sink.actual_rate() == 48000
     assert _FakeStream.last_instance.samplerate == 48000
+    assert _FakeStream.last_instance.extra_settings is None
     sink.close()
     assert _FakeStream.closed == 1
     assert sink._stream is None

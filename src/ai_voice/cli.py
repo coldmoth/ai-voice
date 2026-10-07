@@ -10,7 +10,7 @@ import tomllib
 
 import httpx
 
-from .asr import ASRError, GigaAMASR, SpeechASR
+from .asr import ASRError, GigaAMASR, SpeechASR, WhisperASR, engine_for_language
 from .config import Config
 from .catalog import Catalog
 from .devices import list_devices, resolve_output
@@ -53,9 +53,10 @@ def _devices(config):
 
 def _helper(config, engine="apple"):
     binary = HELPER_BINARY
-    if not binary.exists():
+    if sys.platform != "win32" and not binary.exists():
         raise RuntimeError(t("errors.cli_helper_missing"))
-    cls = GigaAMASR if engine == "gigaam" else SpeechASR
+    selected = engine_for_language(config.language, engine, platform=sys.platform)
+    cls = {"apple": SpeechASR, "gigaam": GigaAMASR, "whisper": WhisperASR}[selected]
     return cls(input_device=config.input_device, language=config.language,
                endpoint_ms=config.endpoint_ms)
 

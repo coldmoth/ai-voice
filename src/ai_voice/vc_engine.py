@@ -4,13 +4,15 @@ import hashlib
 import json
 import logging
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import platform
 import shutil
 import subprocess
+import sys
 import tarfile
 import threading
 import time
+import zipfile
 from urllib.parse import urljoin, urlsplit
 
 import httpx
@@ -22,6 +24,14 @@ HOSTS = frozenset({"github.com", "objects.githubusercontent.com", "release-asset
                    "codeload.github.com", "huggingface.co", "cdn-lfs.huggingface.co",
                    "cdn-lfs-us-1.hf.co", "cas-bridge.xethub.hf.co"})
 CHUNK = 256 * 1024
+
+
+def platform_key(sys_platform: str, machine: str) -> str | None:
+    if sys_platform == "darwin" and machine.lower() == "arm64":
+        return "darwin-arm64"
+    if sys_platform == "win32" and machine.lower() in {"amd64", "x86_64"}:
+        return "win-x64"
+    return None
 
 
 def _check_url(url):
@@ -42,7 +52,12 @@ class Installer:
         self.root = Path(root if root is not None else env or paths.DATA / "vc-runtime").absolute()
         self.dev = root is None and not env
         self.manifest_path = Path(manifest) if manifest is not None else paths.ROOT / "vc_worker" / "engine-manifest.json"
-        self.manifest = json.loads(self.manifest_path.read_text())
+        manifest = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        platforms = manifest.get("platforms", {"darwin-arm64": manifest})
+        self.platform = platform_key(sys.platform, platform.machine())
+        if self.platform not in platforms:
+            self.platform = None
+        self.manifest = platforms.get(self.platform, platforms.get("darwin-arm64", {}))
         self.client = client
         self.work = self.root.parent / "vc-runtime.partial"
         self.old = self.root.parent / "vc-runtime.old"
@@ -62,12 +77,12 @@ class Installer:
             result = dict(self._state)
         version = None
         try:
-            version = json.loads((self.root / "engine.json").read_text())["version"]
+            version = json.loads((self.root / "engine.json").read_text(encoding="utf-8"))["version"]
         except (OSError, ValueError, KeyError, TypeError):
             pass
-        python = paths.VC_PYTHON if self.dev else self.root / "venv/bin/python"
+        python = paths.VC_PYTHON if self.dev else self.root / ("venv/Scripts/python.exe" if self.platform == "win-x64" else "venv/bin/python")
         result.update(installed=python.is_file() and (self._dev_runtime() or version == self.manifest["version"]),
-                      version=version, supported=platform.machine() == "arm64",
+                      version=version, supported=self.platform is not None,
                       free_bytes=self._free_bytes())
         return result
 
@@ -95,7 +110,7 @@ class Installer:
     def start(self):
         with self._lock:
             self._guard()
-            if platform.machine() != "arm64":
+            if self.platform is None:
                 raise RuntimeError("unsupported")
             self._cancel.clear()
             self._update(status="checking", step="", done_bytes=0, error=None)
@@ -171,8 +186,8 @@ class Installer:
                         path.symlink_to(after + target[len(before):])
         config = venv / "pyvenv.cfg"
         if config.is_file() and not config.is_symlink():
-            config.write_text(config.read_text().replace(before, after))
-        for path in (venv / "bin").iterdir():
+            config.write_text(config.read_text(encoding="utf-8").replace(before, after), encoding="utf-8")
+        for path in (venv / ("Scripts" if self.platform == "win-x64" else "bin")).iterdir():
             if path.is_file() and not path.is_symlink():
                 with path.open("rb") as source:
                     head = source.readline(4096)
@@ -239,11 +254,25 @@ class Installer:
 
     def _extract(self, archive, destination, strip=0, keep=None):
         destination.mkdir(parents=True, exist_ok=True)
+        if zipfile.is_zipfile(archive):
+            with zipfile.ZipFile(archive) as source:
+                for member in source.infolist():
+                    original = PurePosixPath(member.filename)
+                    windows = PureWindowsPath(member.filename)
+                    if (original.is_absolute() or ".." in original.parts or windows.root
+                            or windows.drive or ".." in windows.parts
+                            or (member.external_attr >> 16) & 0o170000 == 0o120000):
+                        raise RuntimeError("disk")
+                    self._safe(destination, member.filename)
+                source.extractall(destination)
+            return
         members = []
         with tarfile.open(archive, "r:gz") as source:
             for member in source.getmembers():
-                original = Path(member.name)
-                if original.is_absolute() or ".." in original.parts:
+                original = PurePosixPath(member.name)
+                windows = PureWindowsPath(member.name)
+                if (original.is_absolute() or ".." in original.parts
+                        or sys.platform == 'win32' and (windows.root or windows.drive or ".." in windows.parts)):
                     raise RuntimeError("disk")
                 parts = original.parts[strip:]
                 if not parts:
@@ -264,7 +293,7 @@ class Installer:
         self._check_cancel()
         # A file avoids pipe deadlocks and lets cancel terminate a noisy uv process.
         log = self._safe(self.work, "process.log")
-        with log.open("w+") as output, log.open("r") as progress:
+        with log.open("w+", encoding="utf-8") as output, log.open("r", encoding="utf-8") as progress:
             with self._lock:
                 self._check_cancel()
                 process = subprocess.Popen(argv, env=env, cwd=self.work, stdout=output, stderr=output)
@@ -341,7 +370,7 @@ class Installer:
                     self._prune(target)
             uv_dir = self._safe(self.work, "uv")
             self._extract(uv_archive, uv_dir)
-            uv = next(p for p in uv_dir.rglob("uv") if p.is_file())
+            uv = next(p for p in uv_dir.rglob("uv.exe" if self.platform == "win-x64" else "uv") if p.is_file())
             uv.chmod(0o755)
             for entry, downloaded in downloads:
                 self._check_cancel()
@@ -356,21 +385,28 @@ class Installer:
                     if part.startswith("models--") and parts[index + 1:index + 2] == ("snapshots",):
                         ref = self._safe(self.work, Path(*parts[:index + 1]) / "refs/main")
                         ref.parent.mkdir(parents=True, exist_ok=True)
-                        ref.write_text(parts[index + 2])
+                        ref.write_text(parts[index + 2], encoding="utf-8")
             env = dict(os.environ, UV_CACHE_DIR=str(self.work / "uv-cache"),
                        UV_PYTHON_INSTALL_DIR=str(self.work / "python"))
             code = "uv"
             self._update(step="Installing packages")
             self._subprocess([str(uv), "venv", "--python", self.manifest["python"], str(self.work / "venv")], env, code)
             requirements = self._safe(self.manifest_path.parent, self.manifest["requirements"])
-            self._subprocess([str(uv), "pip", "install", "--python", str(self.work / "venv/bin/python"),
-                              "-r", str(requirements), "--no-deps"], env, code)
+            python = self.work / ("venv/Scripts/python.exe" if self.platform == "win-x64" else "venv/bin/python")
+            install = [str(uv), "pip", "install", "--python", str(python), "-r", str(requirements), "--no-deps"]
+            if self.platform == "win-x64":
+                # Use PyPI when the CUDA index lacks a package's exact locked version.
+                install.extend(["--extra-index-url", self.manifest["torch_index"],
+                                "--index-strategy", "unsafe-first-match"])
+            self._subprocess(install, env, code)
             code = "smoke"
             self._update(status="verifying", step="Checking engine")
-            self._subprocess([str(self.work / "venv/bin/python"), "-c",
-                              "import torch; assert torch.backends.mps.is_available()"], env, code, timeout=60)
+            smoke = "import torch; assert torch.backends.mps.is_available()"
+            if self.platform == "win-x64":
+                smoke = "import torch; print('device=' + ('cuda' if torch.cuda.is_available() else 'cpu'))"
+            self._subprocess([str(python), "-c", smoke], env, code, timeout=60)
             code = "disk"
-            (self.work / "engine.json").write_text(json.dumps({"version": self.manifest["version"], "installed_at": time.time()}))
+            (self.work / "engine.json").write_text(json.dumps({"version": self.manifest["version"], "installed_at": time.time()}), encoding="utf-8")
             # Cancellation is accepted until final cleanup and swap begin together.
             with self._lock:
                 self._check_cancel()

@@ -1,11 +1,21 @@
 """Worker-owned sounddevice streams and bounded queues; never used by the UI."""
 import queue
+import sys
 import collections
 import threading
 import time
 import numpy as np
 from .streaming import Streaming
 from .gate import NoiseGate
+
+
+def stream_extra_settings(sd, device, *, kind="output"):
+    # Separate worker Python has no ai_voice; mirror ai_voice.devices.stream_extra_settings.
+    if sys.platform == "win32":
+        info = sd.query_devices(device, kind=kind)
+        if sd.query_hostapis(info["hostapi"])["name"] == "Windows WASAPI":
+            return sd.WasapiSettings(auto_convert=True)
+    return None
 
 
 def latest(q, item):
@@ -108,13 +118,16 @@ class Runtime:
             raise ValueError('monitor requires a distinct output device')
         try:
             self.streams.append(self.sd.OutputStream(device=d.get('output_device'), samplerate=c.sample_rate,
+                extra_settings=stream_extra_settings(self.sd, d.get('output_device')),
                 channels=1, dtype='float32', blocksize=c.hop,
                 callback=lambda *args: self.render('primary', *args)))
             if d.get('monitor_enabled'):
                 self.streams.append(self.sd.OutputStream(device=d['monitor_device'], samplerate=c.sample_rate,
+                    extra_settings=stream_extra_settings(self.sd, d['monitor_device']),
                     channels=1, dtype='float32', blocksize=c.hop,
                     callback=lambda *args: self.render('monitor', *args)))
             self.streams.append(self.sd.InputStream(device=d.get('input_device'), samplerate=c.sample_rate,
+                extra_settings=stream_extra_settings(self.sd, d.get('input_device'), kind='input'),
                 channels=1, dtype='float32', blocksize=c.hop, callback=self.capture))
             for stream in self.streams:
                 stream.start()

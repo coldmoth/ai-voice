@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import tarfile
 import threading
 from types import SimpleNamespace
@@ -97,6 +98,8 @@ def local_server():
 
 @pytest.fixture
 def engine(tmp_path, monkeypatch, local_server):
+    # Select the tar/macOS fixture without changing the host OS seen by dependencies.
+    monkeypatch.setattr(vc_engine, "sys", SimpleNamespace(platform="darwin"))
     monkeypatch.setattr(vc_engine.platform, "machine", lambda: "arm64")
     monkeypatch.setattr(vc_engine.shutil, "disk_usage", lambda _: SimpleNamespace(free=10**12))
     original_check = vc_engine._check_url
@@ -137,7 +140,11 @@ def engine(tmp_path, monkeypatch, local_server):
                 interpreter = instance.work / "python/bin/python3.10"
                 interpreter.parent.mkdir(parents=True, exist_ok=True)
                 interpreter.write_text("fake python")
-                python.symlink_to(interpreter)
+                if sys.platform == 'darwin':
+                    python.symlink_to(interpreter)
+                else:
+                    # Download/security tests do not exercise macOS uv relocation.
+                    python.write_text('fake python', encoding='utf-8')
                 (python.parent / "tool").write_text(f"#!{python}\nprint('tool')\n")
                 (instance.work / "venv/pyvenv.cfg").write_text(f"home = {interpreter.parent}\n")
 
@@ -156,6 +163,7 @@ def finish(engine):
     return engine.state()
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_happy_path_and_live_runtime_check(engine):
     from ai_voice.vc_control import VcController
     controller = VcController.__new__(VcController)
@@ -427,6 +435,17 @@ def test_tar_traversal_and_links(engine, local_server, name, content):
     assert not engine.calls
 
 
+@pytest.mark.parametrize('name', [r'C:\escape', r'\absolute', r'repo\..\escape'])
+def test_tar_windows_paths_rejected(engine, local_server, monkeypatch, name):
+    monkeypatch.setattr(vc_engine, 'sys', SimpleNamespace(platform='win32'))
+    data = archive([(name, b'evil')])
+    local_server.data['/source'] = data
+    engine.manifest['files'][0].update(size=len(data), sha256=hashlib.sha256(data).hexdigest())
+    engine.start()
+    assert finish(engine)['error'] == 'disk'
+    assert not engine.calls
+
+
 def test_partial_symlink_refused(engine, tmp_path):
     target = tmp_path / "other"
     target.mkdir()
@@ -437,8 +456,15 @@ def test_partial_symlink_refused(engine, tmp_path):
     assert (target / "keep").read_text() == "safe"
 
 
-def test_unsupported(engine, monkeypatch):
-    monkeypatch.setattr(vc_engine.platform, "machine", lambda: "x86_64")
+@pytest.mark.parametrize("system,machine", [
+    ("darwin", "x86_64"), ("linux", "x86_64"),
+    ("linux", "arm64"), ("win32", "ARM64"),
+])
+def test_unsupported(engine, monkeypatch, system, machine):
+    monkeypatch.setattr(vc_engine.sys, "platform", system)
+    monkeypatch.setattr(vc_engine.platform, "machine", lambda: machine)
+    # Task 14 selects the platform and manifest when the installer is created.
+    engine = vc_engine.Installer(root=engine.root, manifest=engine.manifest_path)
     assert not engine.state()["supported"]
     with pytest.raises(RuntimeError, match="^unsupported$"):
         engine.start()

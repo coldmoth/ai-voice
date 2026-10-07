@@ -9,7 +9,7 @@ English | [Русский](README.ru.md)
 
 # AI Voice
 
-<p align="center"><a href="https://github.com/coldmoth/ai-voice/releases/latest/download/AI-Voice.dmg"><img src="https://img.shields.io/badge/Download%20for%20macOS%20(.dmg)-black?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS (.dmg)" height="48"></a></p>
+<p align="center"><a href="https://github.com/coldmoth/ai-voice/releases/latest/download/AI-Voice.dmg"><img src="https://img.shields.io/badge/Download%20for%20macOS%20(.dmg)-black?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS (.dmg)" height="48"></a> <a href="https://github.com/coldmoth/ai-voice/releases/latest/download/AI-Voice-Setup.exe"><img src="https://img.shields.io/badge/Download%20for%20Windows%20(beta)%20(.exe)-black?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows (beta) (.exe)" height="48"></a></p>
 
 You talk (or type), macOS recognises your speech, [Fish Audio](https://fish.audio) speaks it in the voice you chose, and the result goes to a virtual microphone that any app — a call, a stream, a game — can use as its input. An optional experimental **Live voice** converts your voice in real time, on-device.
 
@@ -46,6 +46,17 @@ You talk (or type), macOS recognises your speech, [Fish Audio](https://fish.audi
    Alternative: `xattr -dr com.apple.quarantine "/Applications/AI Voice.app"`.
 
 **Why the warning?** The app is not notarized (there is no paid Apple Developer account behind it). It is built from this repository by GitHub Actions — see the [release workflow runs](https://github.com/coldmoth/ai-voice/actions/workflows/release.yml) — and every release ships a `.sha256` file so you can verify the download.
+
+## Windows (beta)
+
+A Windows port is in beta. Download [AI-Voice-Setup.exe](https://github.com/coldmoth/ai-voice/releases/latest/download/AI-Voice-Setup.exe) (all files: [Releases](https://github.com/coldmoth/ai-voice/releases/latest)).
+
+- **Requirements:** Windows 10 (1809+) or 11, x64. An NVIDIA GPU is optional — without it, Live voice runs on the CPU with high delay. CUDA support is beta and not verified by us.
+- **SmartScreen:** the installer is unsigned, so Windows shows a warning. Click **More info → Run anyway**.
+- The installer requires [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (preinstalled on Windows 11 and updated Windows 10); importing and training custom voices requires `ffmpeg` on PATH (e.g. `winget install Gyan.FFmpeg`).
+- **Virtual microphone:** on request, the app downloads and installs [VB-CABLE](https://vb-audio.com/Cable/) (free donationware by VB-Audio); a reboot may be needed. In Discord, choose **CABLE Output (VB-Audio Virtual Cable)** as the microphone.
+- The swap-voice hotkey is not available on Windows yet.
+- Found a problem? Report it in [GitHub Issues](https://github.com/coldmoth/ai-voice/issues).
 
 ## First launch
 

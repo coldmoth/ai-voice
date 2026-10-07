@@ -2,6 +2,7 @@
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 import pytest
 
@@ -32,10 +33,15 @@ def test_release_workflow_builds_and_attaches_artifacts():
         'gh release create "v$VERSION" --notes-file notes.md',
         'AI-Voice.dmg AI-Voice.dmg.sha256 "AI-Voice-${VERSION}.zip" "AI-Voice-${VERSION}.zip.sha256"',
         "GH_TOKEN: ${{ github.token }}",
+        "  windows:\n    needs: release\n    runs-on: windows-latest",
+        "$version = $env:GITHUB_REF_NAME -replace '^v', ''",
+        "scripts/build-win.ps1 -Version $version",
+        'gh release upload "$env:GITHUB_REF_NAME" "build/win/AI-Voice-Setup-$version.exe" --clobber',
     ):
         assert required in workflow
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_release_notes_contain_only_the_selected_version(tmp_path):
     workflow = (ROOT / ".github/workflows/release.yml").read_text()
     command = next(line.strip() for line in workflow.splitlines() if line.strip().startswith("awk "))
@@ -63,9 +69,10 @@ def test_public_license_and_initial_changelog():
 
 def test_version_constant():
     import ai_voice
-    assert ai_voice.__version__ == "0.4.5"
+    assert ai_voice.__version__ == "0.4.6"
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_version_script_matches_package():
     out = subprocess.run(["scripts/version.sh"], capture_output=True, text=True, check=True).stdout.strip()
     import ai_voice
@@ -159,6 +166,26 @@ def test_public_allowlist_keeps_release_tools_and_private_fixtures_private(relea
     include = release_check.load_patterns(ROOT / "release/public-files.txt")
     assert release_check.select_files(private + ["src/a.py", "README.md"], include,
                                       release_check.EXCLUDE) == ["src/a.py", "README.md"]
+
+
+def test_public_allowlist_includes_windows_build_and_runtime_files(release_check):
+    files = ["scripts/build-win.ps1", "windows/installer.iss", "windows/AppIcon.ico",
+             "vc_worker/engine-requirements-win.lock", "vc_worker/engine-manifest.json",
+             "src/ai_voice/winshell.py", "src/ai_voice/vad.py"]
+    include = release_check.load_patterns(ROOT / "release/public-files.txt")
+    assert release_check.select_files(files, include, release_check.EXCLUDE) == files
+
+
+def test_windows_installer_cleans_runtime_and_offers_launch():
+    installer = (ROOT / "windows/installer.iss").read_text()
+    cleanup = installer.split("[UninstallDelete]\n", 1)[1].split("\n[", 1)[0]
+    assert cleanup.strip() == 'Type: filesandordirs; Name: "{app}"'
+    run = installer.split("[Run]\n", 1)[1].split("\n[", 1)[0]
+    for required in ('Filename: "{app}\\python\\pythonw.exe"',
+                     'Parameters: "-X utf8 -m ai_voice.winshell"',
+                     'WorkingDir: "{app}"', 'Flags: nowait postinstall skipifsilent',
+                     'Description: "Launch AI Voice"'):
+        assert required in run
 
 
 def test_cli_exports_tracked_files_and_scans_relative_to_export_root(release_check, tmp_path, monkeypatch, capsys):

@@ -1,7 +1,6 @@
 """Offline RVC pipeline. Run only with the isolated .venv-vc interpreter."""
 import os
 os.environ['SYSTEM_VERSION_COMPAT'] = '0'
-os.environ['CUDA_VISIBLE_DEVICES'] = ''
 os.environ['HF_HUB_OFFLINE'] = '1'
 os.environ['TRANSFORMERS_OFFLINE'] = '1'
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '0'
@@ -73,13 +72,15 @@ def check_dataset_scale(dataset, clips):
 
 
 def pipeline(args, emit):
+    # Also support the app's direct script launch, without importing app code.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from vc_worker.engines import pick_device
     sys.path.insert(0, str(args.rvc_src))
     import torch
     import numpy as np
     import soundfile as sf
     import librosa
-    if not torch.backends.mps.is_available():
-        raise RuntimeError('MPS is unavailable')
+    device = pick_device()
     torch.set_default_dtype(torch.float32)
     work = args.voice_dir / 'train-work'
     output = args.voice_dir / 'train-out'
@@ -111,7 +112,7 @@ def pipeline(args, emit):
     from infer.rmvpe import RMVPE
     emit('pitch', progress=0)
     rmvpe = RMVPE(str(weight(args.pretrained_dir, 'rmvpe.pt')),
-                             False, device='mps')
+                             False, device=device)
     with torch.inference_mode():
         for i, path in enumerate(clips):
             audio, sr = sf.read(str(path) + '.wav', dtype='float32')
@@ -133,29 +134,31 @@ def pipeline(args, emit):
             np.save(str(path) + '.pitchf.npy', pitchf)
             emit('pitch', progress=(i + 1) / len(clips))
     del rmvpe
-    torch.mps.empty_cache()
+    if device != 'cpu':
+        getattr(torch, device).empty_cache()
 
     from infer.hubert import HubertModelWithFinalProj, extract_hubert_features
     emit('features', progress=0)
     hubert = HubertModelWithFinalProj.from_pretrained(
         str(weight(args.pretrained_dir, 'hubert_base')),
-        local_files_only=True).eval().float().to('mps')
+        local_files_only=True).eval().float().to(device)
     rows = []
     with torch.inference_mode():
         for i, path in enumerate(clips):
             audio, sr = sf.read(str(path) + '.wav', dtype='float32')
             a16 = librosa.resample(audio, orig_sr=sr, target_sr=16000)
             features = extract_hubert_features(
-                hubert, torch.tensor(a16)[None].to('mps'), 'v2').squeeze(0).cpu().numpy()
+                hubert, torch.tensor(a16)[None].to(device), 'v2').squeeze(0).cpu().numpy()
             np.save(str(path) + '.npy', features)
             rows.append('|'.join([str(path) + suffix for suffix in
                                   ('.wav', '.npy', '.pitch.npy', '.pitchf.npy')] + ['0']))
             emit('features', progress=(i + 1) / len(clips))
     del hubert, features
-    torch.mps.empty_cache()
-    (work / 'filelist.txt').write_text('\n'.join(rows) + '\n')
+    if device != 'cpu':
+        getattr(torch, device).empty_cache()
+    (work / 'filelist.txt').write_text('\n'.join(rows) + '\n', encoding='utf-8')
 
-    cfg = json.loads((args.rvc_src / 'configs/v2/48k.json').read_text())
+    cfg = json.loads((args.rvc_src / 'configs/v2/48k.json').read_text(encoding='utf-8'))
     cfg['train'].update(epochs=args.epochs, batch_size=args.batch,
                         segment_size=17280, log_interval=1000)
     cfg['data']['training_files'] = str(work / 'filelist.txt')
@@ -165,10 +168,14 @@ def pipeline(args, emit):
                pretrainD=str(weight(args.pretrained_dir, 'f0D48k.pth')),
                version='v2', gpus='0', sample_rate='48k', if_f0=1, if_latest=1,
                save_every_weights='0', if_cache_data_in_gpu=0)
-    (work / 'config.json').write_text(json.dumps(cfg))
+    (work / 'config.json').write_text(json.dumps(cfg), encoding='utf-8')
     # Upstream locale lookup and exported weights use cwd-relative paths.
     if not (work / 'i18n').exists():
-        (work / 'i18n').symlink_to(args.rvc_src / 'i18n', target_is_directory=True)
+        if sys.platform == 'win32':
+            import shutil
+            shutil.copytree(args.rvc_src / 'i18n', work / 'i18n')
+        else:
+            (work / 'i18n').symlink_to(args.rvc_src / 'i18n', target_is_directory=True)
     (work / 'assets/weights').mkdir(parents=True, exist_ok=True)
     os.chdir(work)
     from train import utils
@@ -176,7 +183,7 @@ def pipeline(args, emit):
     start_epoch = resume_epoch(work, args.epochs, torch, utils)
     emit('train', epoch=start_epoch, resumed=True)
     spec = importlib.util.spec_from_file_location(
-        'vc_train_mps', Path(__file__).resolve().with_name('train_mps.py'))
+        'vc_worker.train', Path(__file__).resolve().with_name('train.py'))
     trainer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(trainer)
     trainer.epoch_callback = lambda event: emit('train', **event)
@@ -188,7 +195,7 @@ def pipeline(args, emit):
         import faiss
     except ImportError:
         emit('index', progress=1, skipped='faiss_unavailable',
-             warning='faiss недоступен; модель сохранена без индекса')
+             warning='faiss unavailable; model saved without an index')
         return
     # Flat L2 is supported by RVC retrieval and works for small datasets too.
     index = faiss.IndexFlatL2(768)

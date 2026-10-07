@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 import threading
 import time
 import math
@@ -205,6 +206,11 @@ def _is_monitor_blacklisted(name):
     if not isinstance(name, str):
         return True
     upper = name.upper()
+    if sys.platform == "win32":
+        from .devices import WIN_VIRTUAL_OUTPUTS
+
+        if any(token.upper() in upper for token in WIN_VIRTUAL_OUTPUTS):
+            return True
     return any(token.upper() in upper for token in MONITOR_BLACKLIST)
 
 
@@ -274,7 +280,7 @@ class _VoiceMetaStore:
     def __init__(self, path):
         self.path, self.lock, self._data = path, threading.RLock(), {}
         try:
-            raw = json.loads(path.read_text())
+            raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return
         if not isinstance(raw, dict):
@@ -326,7 +332,7 @@ class _VoiceMetaStore:
             try:
                 self.path.parent.mkdir(exist_ok=True, parents=True)
                 temporary = self.path.with_suffix(".tmp")
-                temporary.write_text(json.dumps(self._data, ensure_ascii=False))
+                temporary.write_text(json.dumps(self._data, ensure_ascii=False), encoding="utf-8")
                 os.chmod(temporary, 0o600)
                 temporary.replace(self.path)
             except OSError:
@@ -379,7 +385,7 @@ class Catalog:
         stored_version, file_ok = None, False
         stored = {}
         try:
-            stored = json.loads(self.path.read_text())
+            stored = json.loads(self.path.read_text(encoding="utf-8"))
             if isinstance(stored, dict):
                 file_ok = True
                 stored_version = stored.get("library_version")
@@ -461,7 +467,7 @@ class Catalog:
         with self.lock:
             self.path.parent.mkdir(exist_ok=True, parents=True)
             temporary = self.path.with_suffix(".tmp")
-            temporary.write_text(json.dumps(self.data, ensure_ascii=False, indent=2))
+            temporary.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), encoding="utf-8")
             os.chmod(temporary, 0o600)
             temporary.replace(self.path)
 

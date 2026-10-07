@@ -3,6 +3,7 @@ from pathlib import Path
 import plistlib
 import shlex
 import subprocess
+import sys
 import threading
 from types import SimpleNamespace
 
@@ -29,6 +30,7 @@ def bundle(path, version="0.7.1"):
     (False, False, False), (True, False, False), (True, True, True),
     (True, True, False), (False, True, True),
 ])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_status(available, installed, present):
     if available:
         bundle(driver.paths.ROOT / "driver" / driver.NAME)
@@ -42,6 +44,7 @@ def test_status(available, installed, present):
     }
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_bundled_fallback_and_priority():
     fallback = bundle(driver.paths.ROOT / "build" / "driver" / driver.NAME)
     assert driver.bundled() == fallback
@@ -50,6 +53,7 @@ def test_bundled_fallback_and_priority():
 
 
 @pytest.mark.parametrize("payload", [b"bad plist", b"<?xml version='1.0'?><plist><bad", plistlib.dumps([])])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_unreadable_versions(payload):
     for path in (driver.paths.ROOT / "driver" / driver.NAME, driver.HAL / driver.NAME):
         bundle(path)
@@ -58,11 +62,13 @@ def test_unreadable_versions(payload):
     assert state["bundled_version"] is None and state["installed_version"] is None
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_missing_versions():
     (driver.paths.ROOT / "driver" / driver.NAME).mkdir(parents=True)
     assert driver.status([])["bundled_version"] is None
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_script_and_applescript_quoting(monkeypatch):
     source = Path('/tmp/a b"c/AIVoiceMic.driver')
     monkeypatch.setattr(driver, "HAL", Path('/tmp/hal a"b\\c'))
@@ -94,6 +100,7 @@ def test_script_and_applescript_quoting(monkeypatch):
 
 @pytest.mark.parametrize("code,stderr,expected", [(0, "", "ok"), (1, "cancel (-128)", "cancelled"),
                                                  (1, "secret error" * 50, "failed")])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_runner_outcomes(monkeypatch, caplog, code, stderr, expected):
     monkeypatch.setattr(driver.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=code, stderr=stderr))
     assert driver._run("test") == expected
@@ -104,6 +111,7 @@ def test_runner_outcomes(monkeypatch, caplog, code, stderr, expected):
 
 
 @pytest.mark.parametrize("error", [subprocess.TimeoutExpired("test", 300, stderr=b"timed out"), OSError("no runner")])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_runner_exceptions(monkeypatch, error, caplog):
     def run(*args, **kwargs):
         raise error

@@ -143,7 +143,7 @@ def test_extractor_format_is_idempotent(extractor, tmp_path, monkeypatch):
     before = [(tmp_path / f"{lang}.json").read_bytes() for lang in ("en", "ru")]
     extractor.fmt()
     assert before == [(tmp_path / f"{lang}.json").read_bytes() for lang in ("en", "ru")]
-    assert before[0].decode() == '{\n  "common.a": "A",\n  "common.z": "Я"\n}\n'
+    assert before[0].decode('utf-8').replace('\r\n', '\n') == '{\n  "common.a": "A",\n  "common.z": "Я"\n}\n'
 
 
 def test_extractor_swift_interpolation_has_no_python_warnings(extractor, tmp_path):

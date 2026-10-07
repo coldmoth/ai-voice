@@ -49,7 +49,9 @@ const server = http.createServer(async (req, res) => {
   const base = 'http://127.0.0.1:' + server.address().port + '/';
   let browser;
   try {
-    browser = await chromium.launch({executablePath: process.env.AI_VOICE_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true});
+    const macChrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    const executablePath = process.env.AI_VOICE_CHROME || (process.platform === 'darwin' && fs.existsSync(macChrome) ? macChrome : undefined);
+    browser = await chromium.launch({...(executablePath ? {executablePath} : {}), headless: true});
     const page = await browser.newPage({viewport: {width: 1220, height: 800}});
     const pageErrors = []; page.on('pageerror', e => pageErrors.push(e.message));
     const title = () => page.locator('#ob-title').textContent();
@@ -131,6 +133,98 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await title(), en['onboarding.done.title']);
     await tabTo('ob-next'); await page.keyboard.press('Enter');
     await page.waitForSelector('#onboarding', {state: 'hidden'});
+
+    // 8b: on Windows the speech-permission row is hidden and the microphone
+    // settings link points to ms-settings:privacy-microphone.
+    {
+      const winPage = await browser.newPage({viewport: {width: 1220, height: 800}});
+      winPage.on('pageerror', e => pageErrors.push(e.message));
+      await winPage.route('**/api/voices', route => route.fulfill({json: {items: voices, language: 'en', preferences: prefs,
+        platform: 'win', speech_languages: [{id: 'en-US'}], speech_language: 'en-US',
+        devices: {inputs: ['MIC'], outputs: ['Speakers'], monitors: [], default_input: 'MIC', default_output: 'Speakers', virtual: []}}}));
+      await winPage.goto(base, {waitUntil: 'domcontentloaded'});
+      await winPage.waitForFunction(() => !!window.aiVoiceOnboarding);
+      await winPage.evaluate(() => window.aiVoiceOnboarding.show(3));
+      await winPage.waitForSelector('#ob-perm-microphone');
+      assert.equal(await winPage.locator('#ob-perm-speech').count(), 0);
+      perms = {microphone: 'denied', speech: 'not_determined'};
+      await winPage.waitForSelector('#ob-perm-microphone a[href="ms-settings:privacy-microphone"]');
+      await winPage.close();
+    }
+
+    // 8c: Windows cable step — all five install_cable statuses with a mocked API.
+    {
+      const CABLE = 'CABLE Input (VB-Audio Virtual Cable)';
+      const cable = {status: null, device: null, virtual: []};
+      const winPage = await browser.newPage({viewport: {width: 1220, height: 800}});
+      winPage.on('pageerror', e => pageErrors.push(e.message));
+      await winPage.route('**/api/voices', route => route.fulfill({json: {items: voices, language: 'en', preferences: prefs,
+        platform: 'win', speech_languages: [{id: 'en-US'}], speech_language: 'en-US',
+        devices: {inputs: ['MIC'], outputs: cable.virtual.length ? ['Speakers', ...cable.virtual] : ['Speakers'],
+          monitors: [], default_input: 'MIC', default_output: 'Speakers', virtual: cable.virtual}}}));
+      await winPage.route('**/api/driver/install', route => {
+        if (cable.status === 'installed' && cable.device) cable.virtual = [cable.device];
+        route.fulfill({json: {status: cable.status, device: cable.device}});
+      });
+      await winPage.route('**/api/devices/rescan', route => route.fulfill({json: {ok: true}}));
+      const show4 = async () => {
+        await winPage.goto(base, {waitUntil: 'domcontentloaded'});
+        await winPage.waitForFunction(() => !!window.aiVoiceOnboarding);
+        await winPage.evaluate(() => window.aiVoiceOnboarding.show(4));
+        await winPage.waitForSelector('#ob-title');
+      };
+
+      // Found: device name + Next.
+      cable.virtual = [CABLE];
+      await show4();
+      assert.equal(await winPage.locator('#ob-title').textContent(), en['onboarding.cable.title']);
+      await winPage.waitForSelector('#ob-dev-cable');
+      assert.ok((await winPage.locator('#ob-dev-cable').textContent()).includes(CABLE));
+      assert.equal(await winPage.locator('#ob-dev-cable .ob-chip').textContent(), en['onboarding.device.installed']);
+      await winPage.waitForFunction(() => !document.querySelector('#ob-next').disabled);
+      await winPage.waitForFunction(name => document.querySelector('.ob-hint')?.textContent.includes(name), CABLE);
+
+      // Not found: install button + donationware note + site link.
+      cable.virtual = []; prefs.output_device = null;
+      await show4();
+      await winPage.waitForSelector('#ob-cable-install');
+      assert.equal(await winPage.locator('#ob-cable-install').textContent(), en['onboarding.cable.install']);
+      assert.ok((await winPage.locator('#ob-devices').textContent()).includes(en['onboarding.cable.note']));
+      assert.ok(await winPage.locator('#ob-devices a[href="https://vb-audio.com/Cable/"]').count() >= 1);
+
+      // installed: card appears and the device is chosen.
+      cable.status = 'installed'; cable.device = CABLE;
+      await winPage.click('#ob-cable-install');
+      await winPage.waitForSelector('#ob-dev-cable');
+      assert.deepEqual(posts.findLast(p => p.path === '/api/preferences').body, {output_device: CABLE});
+
+      // reboot: restart text.
+      cable.virtual = []; prefs.output_device = null; cable.status = 'reboot'; cable.device = null;
+      await show4();
+      await winPage.click('#ob-cable-install');
+      await winPage.waitForSelector('#ob-cable-reboot');
+      assert.equal(await winPage.locator('#ob-cable-reboot').textContent(), en['onboarding.cable.reboot']);
+
+      // cancelled: back to the install button, no error.
+      cable.status = 'cancelled';
+      await show4();
+      await winPage.click('#ob-cable-install');
+      await winPage.waitForFunction(label => document.querySelector('#ob-cable-install')?.textContent === label, en['onboarding.cable.install']);
+      assert.equal(await winPage.locator('#ob-devices .ob-error').count(), 0);
+
+      // hash_mismatch and network: error + Download manually link.
+      for (const [status, key] of [['hash_mismatch', 'onboarding.cable.failed_hash'], ['network', 'onboarding.cable.failed_network']]) {
+        cable.status = status;
+        await show4();
+        await winPage.click('#ob-cable-install');
+        await winPage.waitForSelector('#ob-devices .ob-error');
+        assert.ok((await winPage.locator('#ob-devices .ob-error').textContent()).includes(en[key]));
+        assert.ok(await winPage.locator('#ob-devices .ob-error a[href="https://vb-audio.com/Cable/"]').count() === 1);
+        assert.equal(await winPage.locator('#ob-devices .ob-error a').textContent(), en['onboarding.cable.manual']);
+      }
+      await winPage.close();
+      cable.virtual = []; prefs.output_device = null;
+    }
 
     // 9: screenshots and overflow.
     const shotsList = [];

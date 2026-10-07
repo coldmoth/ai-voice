@@ -4,12 +4,13 @@ import json
 import math
 import os
 import re
-import resource
 import sys
+if sys.platform != "win32":
+    import resource
 import threading
 import time
 import numpy as np
-from .engines import load_engine
+from .engines import load_engine, pick_device
 from .runtime import Runtime
 from .streaming import Config
 
@@ -18,6 +19,28 @@ RSS_LIMIT = 3_000_000_000
 
 def rss_bytes():
     # High-water RSS is conservative: a breached process must be restarted.
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        class ProcessMemoryCounters(ctypes.Structure):
+            _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                        ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        kernel.GetCurrentProcess.argtypes = []
+        kernel.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessMemoryCounters), wintypes.DWORD]
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+        counters = ProcessMemoryCounters()
+        counters.cb = ctypes.sizeof(counters)
+        if not psapi.GetProcessMemoryInfo(kernel.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
+            raise OSError("Could not read process memory usage.")
+        return int(counters.PeakWorkingSetSize)
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return int(peak if sys.platform == 'darwin' else peak * 1024)
 
@@ -137,7 +160,8 @@ class Service:
                   processing_ms=runtime.processor.processing_ms if runtime else 0,
                   # Estimate includes capture and one output callback; not a measured E2E latency.
                   latency_ms=(2 * self.config.hop_ms + runtime.processor.processing_ms) if runtime else None,
-                  latency_kind='estimate')
+                  latency_kind='estimate',
+                  **({'device': pick_device()} if self.state == 'loaded' else {}))
 
     def stop(self):
         if self.runtime:

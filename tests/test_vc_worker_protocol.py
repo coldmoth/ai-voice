@@ -15,6 +15,12 @@ from vc_worker.runtime import Runtime, latest
 from vc_worker.streaming import Config
 
 
+@pytest.fixture(autouse=True)
+def fake_device(monkeypatch):
+    # Protocol doubles must not import torch from the app's Python environment.
+    monkeypatch.setattr('vc_worker.protocol.pick_device', lambda: 'mps')
+
+
 class Engine:
     def convert(self, audio, sr, params):
         return audio, sr
@@ -33,6 +39,11 @@ class FakeStream:
 
 
 class Audio:
+    def query_devices(self, device, *, kind):
+        return {'hostapi': 0}
+    def query_hostapis(self, index):
+        return {'name': 'MME'}
+
     def __init__(self):
         self.streams = []
     def create(self, **kwargs):
@@ -40,6 +51,44 @@ class Audio:
         self.streams.append(stream)
         return stream
     InputStream = OutputStream = create
+
+
+@pytest.mark.parametrize('platform,hostapi,enabled', [
+    ('win32', 'Windows WASAPI', True), ('win32', 'MME', False),
+    ('darwin', 'Windows WASAPI', False),
+])
+def test_runtime_stream_extra_settings(monkeypatch, platform, hostapi, enabled):
+    from types import SimpleNamespace
+    from vc_worker import runtime as module
+
+    monkeypatch.setattr(module, 'sys', SimpleNamespace(platform=platform))
+    audio = Audio()
+    queried = []
+    def query(device, *, kind):
+        queried.append((device, kind))
+        return {'hostapi': 0}
+    audio.query_devices = query
+    audio.query_hostapis = lambda index: {'name': hostapi}
+    audio.WasapiSettings = lambda **kw: SimpleNamespace(**kw)
+    runtime = Runtime(Engine(), Config(sample_rate=8000), {},
+                      {'output_device': None, 'monitor_enabled': True,
+                       'monitor_device': 2, 'input_device': None},
+                      lambda *a, **kw: None, lambda: None, sd=audio)
+    try:
+        runtime.start()
+        assert len(audio.streams) == 3
+        for stream in audio.streams:
+            settings = stream.kwargs['extra_settings']
+            if enabled:
+                assert settings.auto_convert is True
+            else:
+                assert settings is None
+        assert queried == ([(None, 'output'), (2, 'output'), (None, 'input')]
+                           if platform == 'win32' else [])
+    finally:
+        runtime.close()
+        if runtime.thread:
+            runtime.thread.join(timeout=1)
 
 
 def service():
@@ -331,7 +380,8 @@ def test_engine_selection_safe_load_and_environment(kind, adapter, tmp_path, mon
     def torch_load(*args, **kwargs):
         calls.append(kwargs)
         return {}
-    torch = SimpleNamespace(load=torch_load, backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: True)))
+    torch = SimpleNamespace(load=torch_load, cuda=SimpleNamespace(is_available=lambda: False),
+                            backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: True)))
     monkeypatch.setitem(sys.modules, 'torch', torch)
     def adapter_load(voice):
         assert os.environ['SYSTEM_VERSION_COMPAT'] == '0'

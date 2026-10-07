@@ -1,8 +1,10 @@
-# Adapted copy of RVC-Project train/train.py (MIT), following train-mps.patch.
+# Adapted copy of RVC-Project train/train.py (MIT), for local single-device training.
 # Loaded by train_runner after local config setup; no upstream files are changed.
 import os
+import sys
+if sys.platform != "win32":
+    import resource
 os.environ['SYSTEM_VERSION_COMPAT'] = '0'
-os.environ['CUDA_VISIBLE_DEVICES'] = ''
 epoch_callback = None
 MAX_GRAD_NORM = 100.0
 
@@ -46,20 +48,23 @@ import datetime
 from train import utils
 
 hps = utils.get_hparams()
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
 n_gpus = len(hps.gpus.split("-"))
 from random import randint, shuffle
 
 import torch
+from vc_worker.engines import pick_device
+from vc_worker.protocol import rss_bytes
+
+device = pick_device()
 
 from i18n.i18n import I18nAuto
 
 i18n = I18nAuto()
 
-training_dtype = torch.float32
+training_dtype = torch.float16 if device == "cuda" else torch.float32
 training_is_half = training_dtype == torch.float16
 
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler
 
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
@@ -142,8 +147,6 @@ def load_pretrained_generator(model, path):
 
 
 def main():
-    if not torch.backends.mps.is_available():
-        raise RuntimeError('MPS is unavailable')
     logger = utils.get_logger(hps.model_dir)
     run(0, 1, hps, logger, False)
 
@@ -163,7 +166,7 @@ def run(rank, n_gpus, hps, logger, use_ddp):
             backend="gloo", init_method="env://?use_libuv=False", world_size=n_gpus, rank=rank
         )
     torch.manual_seed(hps.train.seed)
-    if torch.cuda.is_available():
+    if device == "cuda":
         torch.cuda.set_device(rank)
 
     if hps.if_f0 == 1:
@@ -209,14 +212,9 @@ def run(rank, n_gpus, hps, logger, use_ddp):
             **hps.model,
             is_half=training_is_half,
         )
-    if torch.cuda.is_available():
-        net_g = net_g.cuda(rank)
     net_d = MultiPeriodDiscriminator(hps.model.use_spectral_norm)
-    if torch.cuda.is_available():
-        net_d = net_d.cuda(rank)
-    if torch.backends.mps.is_available():
-        net_g = net_g.to("mps")
-        net_d = net_d.to("mps")
+    net_g = net_g.to(device)
+    net_d = net_d.to(device)
     optim_g = torch.optim.AdamW(
         net_g.parameters(),
         hps.train.learning_rate,
@@ -232,7 +230,7 @@ def run(rank, n_gpus, hps, logger, use_ddp):
     # net_g = DDP(net_g, device_ids=[rank], find_unused_parameters=True)
     # net_d = DDP(net_d, device_ids=[rank], find_unused_parameters=True)
     if use_ddp:
-        if torch.cuda.is_available():
+        if device == "cuda":
             net_g = DDP(net_g, device_ids=[rank])
             net_d = DDP(net_d, device_ids=[rank])
         else:
@@ -283,11 +281,12 @@ def run(rank, n_gpus, hps, logger, use_ddp):
         optim_d, gamma=hps.train.lr_decay, last_epoch=epoch_str - 2
     )
 
-    scaler = GradScaler(enabled=training_is_half)
+    scaler = GradScaler("cuda", enabled=training_is_half)
 
     cache = []
     for epoch in range(epoch_str, hps.total_epoch + 1):
-        torch.mps.synchronize()
+        if device != "cpu":
+            getattr(torch, device).synchronize()
         epoch_start = ttime()
         if rank == 0:
             train_and_evaluate(
@@ -317,11 +316,13 @@ def run(rank, n_gpus, hps, logger, use_ddp):
                 None,
                 cache,
             )
-        torch.mps.synchronize()
-        import json, resource
-        with open(os.path.join(hps.model_dir, "epochs.jsonl"), "a") as f:
+        if device != "cpu":
+            getattr(torch, device).synchronize()
+        import json
+        with open(os.path.join(hps.model_dir, "epochs.jsonl"), "a", encoding="utf-8") as f:
             event = {"epoch": epoch, "seconds": ttime()-epoch_start,
-                     "peak_rss_mib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024**2}
+                     "peak_rss_mib": (rss_bytes() if sys.platform == "win32" else
+                                      resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1024**2}
             f.write(json.dumps(event)+"\n")
         if epoch_callback is not None:
             epoch_callback(event)
@@ -377,7 +378,7 @@ def train_and_evaluate(
                         sid,
                     ) = info
                 # Load on CUDA
-                if torch.cuda.is_available():
+                if device == "cuda":
                     phone = phone.cuda(rank, non_blocking=True)
                     phone_lengths = phone_lengths.cuda(rank, non_blocking=True)
                     if hps.if_f0 == 1:
@@ -448,7 +449,7 @@ def train_and_evaluate(
         else:
             phone, phone_lengths, spec, spec_lengths, wave, wave_lengths, sid = info
         ## Load on CUDA
-        if (hps.if_cache_data_in_gpu == False) and torch.cuda.is_available():
+        if (hps.if_cache_data_in_gpu == False) and device == "cuda":
             phone = phone.cuda(rank, non_blocking=True)
             phone_lengths = phone_lengths.cuda(rank, non_blocking=True)
             if hps.if_f0 == 1:
@@ -460,12 +461,14 @@ def train_and_evaluate(
             wave = wave.cuda(rank, non_blocking=True)
             # wave_lengths = wave_lengths.cuda(rank, non_blocking=True)
 
-        if torch.backends.mps.is_available():
-            phone, phone_lengths, pitch, pitchf, spec, spec_lengths, wave, sid = (
-                x.to("mps") for x in (phone, phone_lengths, pitch, pitchf, spec, spec_lengths, wave, sid)
+        if device != "cuda":
+            phone, phone_lengths, spec, spec_lengths, wave, sid = (
+                x.to(device) for x in (phone, phone_lengths, spec, spec_lengths, wave, sid)
             )
+            if hps.if_f0 == 1:
+                pitch, pitchf = pitch.to(device), pitchf.to(device)
         # Calculate
-        with autocast(enabled=training_is_half):
+        with torch.autocast("cuda", dtype=torch.float16, enabled=training_is_half):
             if hps.if_f0 == 1:
                 (
                     y_hat,
@@ -493,7 +496,7 @@ def train_and_evaluate(
             y_mel = commons.slice_segments(
                 mel, ids_slice, hps.train.segment_size // hps.data.hop_length
             )
-            with autocast(enabled=False):
+            with torch.autocast("cuda", enabled=False):
                 y_hat_mel = mel_spectrogram_torch(
                     y_hat.float().squeeze(1),
                     hps.data.filter_length,
@@ -512,7 +515,7 @@ def train_and_evaluate(
 
             # Discriminator
             y_d_hat_r, y_d_hat_g, _, _ = net_d(wave, y_hat.detach())
-            with autocast(enabled=False):
+            with torch.autocast("cuda", enabled=False):
                 loss_disc, losses_disc_r, losses_disc_g = discriminator_loss(
                     y_d_hat_r, y_d_hat_g
                 )
@@ -523,10 +526,10 @@ def train_and_evaluate(
         torch.nn.utils.clip_grad_norm_(net_d.parameters(), MAX_GRAD_NORM)
         scaler.step(optim_d)
 
-        with autocast(enabled=training_is_half):
+        with torch.autocast("cuda", dtype=torch.float16, enabled=training_is_half):
             # Generator
             y_d_hat_r, y_d_hat_g, fmap_r, fmap_g = net_d(wave, y_hat)
-            with autocast(enabled=False):
+            with torch.autocast("cuda", enabled=False):
                 loss_mel = F.l1_loss(y_mel, y_hat_mel) * hps.train.c_mel
                 loss_kl = kl_loss(z_p, logs_q, m_p, logs_p, z_mask) * hps.train.c_kl
                 loss_fm = feature_loss(fmap_r, fmap_g)

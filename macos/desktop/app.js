@@ -1,4 +1,14 @@
 const I18N = {lang: 'en', dict: {}, fallback: {}};
+let APP_PLATFORM = 'mac';
+// JS -> native bridge: WKWebView handlers on macOS, pywebview js_api on Windows.
+function nativePost(name, payload) {
+  try {
+    const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers[name];
+    if (handler) handler.postMessage(payload);
+    else if (window.pywebview && window.pywebview.api && window.pywebview.api[name]) window.pywebview.api[name](payload);
+  } catch {}
+}
+window.nativePost = nativePost;
 async function loadLocale(lang) {
   const selected = lang === 'ru' ? 'ru' : 'en';
   const fetchDict = async code => {
@@ -14,7 +24,9 @@ async function loadLocale(lang) {
   document.documentElement.lang = selected;
 }
 function t(key, vars = {}) {
-  const value = I18N.dict[key] ?? I18N.fallback[key] ?? key;
+  const winKey = key + '_win';
+  const resolved = APP_PLATFORM === 'win' && (I18N.dict[winKey] !== undefined || I18N.fallback[winKey] !== undefined) ? winKey : key;
+  const value = I18N.dict[resolved] ?? I18N.fallback[resolved] ?? resolved;
   return value.replace(/\{([a-z_][a-z0-9_]*)\}/g, (match, name) =>
     Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : match);
 }
@@ -138,7 +150,7 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
       await loadLocale(lang);
       applyI18n();
       rerenderAll();
-      window.webkit?.messageHandlers?.language?.postMessage(lang);
+      nativePost('language', lang);
     } catch (error) { showToast(error.message); }
     finally { languageBusy = false; $('#ui-language-select').disabled = false; $('#ui-language-select').value = I18N.lang; }
   }
@@ -839,6 +851,7 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
   function initial(name) { const w = String(name||'').replace(/[()\[\]<>\s]/g,''); return w ? Array.from(w)[0].toUpperCase() : '—'; }
   function initials(name) { return name.replace(/[()\[\]<>]/g,'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>Array.from(w)[0]).join('').toUpperCase(); }
   function showToast(message) { showToast.translate=null; toast.textContent=message; toast.classList.add('show'); clearTimeout(showToast.timer); showToast.timer=setTimeout(()=>toast.classList.remove('show'),2800); }
+  window.showToast = showToast;
   function showTranslatedToast(translate) { showToast(translate()); showToast.translate=translate; }
   function pluralVoices(n) {
     return tp('catalog.voice_word', n);
@@ -1305,7 +1318,8 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
     return {key_code:code, modifiers, label};
   }
   function postHotkey(message) {
-    try { window.webkit.messageHandlers.hotkey.postMessage(message); } catch {}
+    if (APP_PLATFORM === 'win') return; // no swap hotkey on Windows in v1
+    nativePost('hotkey', message);
   }
   function syncSwapHotkey() {
     if (prefsState.swap_enabled) { const h = swapHotkey(); postHotkey({action:'register', key_code:h.key_code, modifiers:h.modifiers}); }
@@ -1376,6 +1390,7 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
       save({swap_mode:b.dataset.mode}, () => { prefsState.swap_mode = previous; showMode(); }).catch(() => {});
     }));
     segment.append(...buttons); showMode(); modeRow.append(segment);
+    if (APP_PLATFORM === 'win') { wrap.append(enableRow, modeRow); return wrap; }
     // Hotkey recorder
     const keyRow = el('div','audio-row keys-row');
     keyRow.append(el('span','keys-title',t('settings.keys.shortcut')));
@@ -1647,8 +1662,10 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
   async function loadInitial() {
     try {
       const data=await api('/api/voices');
+      APP_PLATFORM = data.platform === 'win' ? 'win' : 'mac';
       await loadLocale(data.language || 'en');
       applyI18n();
+      if (APP_PLATFORM === 'win') document.querySelectorAll('.n-toolbar,.n-traffic-spacer').forEach(node => node.classList.add('pywebview-drag-region'));
       voices=unique(clean(data.items));
       speechLanguages = Array.isArray(data.speech_languages) ? data.speech_languages : [{id:'en-US'}, {id:'ru-RU'}];
       speechLanguage = data.speech_language || 'en-US';
@@ -2083,7 +2100,7 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
     }
   }
   settingsHooks.audio = () => { driverStatus().then(renderDriverRow).catch(() => {}); };
-  window.aiVoiceApp = {setLanguage, openSettings, refreshDevices, refreshKeys, driverAction, driverStatus, prefs: () => ({...prefsState}),
+  window.aiVoiceApp = {setLanguage, openSettings, refreshDevices, refreshKeys, driverAction, driverStatus, prefs: () => ({...prefsState}), platform: () => APP_PLATFORM,
     speech: () => ({languages: speechLanguages, selected: speechLanguage}),
     setSpeechLanguage: value => { speechLanguage = value; prefsState.speech_language = value; syncLanguageControls(); }};
   $('#settings-btn').addEventListener('click', () => openSettings());
@@ -2148,7 +2165,7 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
   $('#settings-sheet').addEventListener('click', event => { if (event.target === $('#settings-sheet')) closeSettings(); });
   document.addEventListener('keydown', event => {
     if (onboardingOpen()) return;
-    if (event.metaKey && event.key === ',') { event.preventDefault(); openSettings(); return; }
+    if ((event.metaKey || (APP_PLATFORM === 'win' && event.ctrlKey)) && event.key === ',') { event.preventDefault(); openSettings(); return; }
     if (event.key === 'Escape' && !$('#settings-sheet').hidden) { event.preventDefault(); closeSettings(); }
   });
   $('#settings-sheet').addEventListener('keydown', event => {
@@ -2171,7 +2188,7 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
     const key=JSON.stringify([done.voice_id,done.state,done.at]);if(key===vcSeenDone)return;vcSeenDone=key;
     const translate = () => done.state==='done'?t('vc.trained_notice', {name:done.name||t('common.voice')}):t('vc.training_failed_notice', {name:done.name||t('common.voice')});
     const body=translate();
-    window.webkit?.messageHandlers?.notify?.postMessage({title:'AI Voice',body});showTranslatedToast(translate);
+    nativePost('notify', {title:'AI Voice',body});showTranslatedToast(translate);
   }
   try { vcSelectedId=localStorage.getItem('avr_vc_selected'); } catch {}
   function vcSaveSelection() { try { localStorage.setItem('avr_vc_selected',vcSelectedId||''); } catch {} }
@@ -2604,7 +2621,7 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
       } finally {vcTextBusy=false;vcUpdateText();}
     }
     send.addEventListener('click',()=>submit(['synth','playing'].includes(audioState.vc?.inject?.state)));
-    input.addEventListener('keydown',event=>{if(event.metaKey&&event.key==='Enter'){event.preventDefault();submit();}});
+    input.addEventListener('keydown',event=>{if((event.metaKey || (APP_PLATFORM === 'win' && event.ctrlKey))&&event.key==='Enter'){event.preventDefault();submit();}});
     row.append(input,send,hint);return row;
   }
   function vcBuildTextVoiceRow() {
@@ -2731,6 +2748,7 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
       const row=el('div','vc-meter-row'),meter=el('div','vc-meter');meter.id=id;meter.append(el('i'));if(id==='vc-in-level')meter.append(el('b','vc-gate-mark'));row.append(el('span','',label),meter);meters.append(row);
     });group.append(meters,vcBuildGate(),vcBuildTextRow());
     const dropHint=el('div','vc-drop-hint',t('vc.drop_hint'));dropHint.id='vc-drop-hint';dropHint.hidden=true;group.append(dropHint);
+    const cpuWarning=el('div','vc-drop-hint',t('vc.cpu_warning'));cpuWarning.id='vc-cpu-warning';cpuWarning.setAttribute('role','status');cpuWarning.hidden=true;group.append(cpuWarning);
     const readout=el('div','vc-readout',t('vc.readout_empty'));readout.id='vc-readout';
     const error=el('div','vc-error');error.id='vc-error';error.setAttribute('role','alert');error.hidden=true;group.append(readout);stage.append(group,error);
     const training=el('section','vc-training');training.id='vc-training';training.hidden=true;
@@ -2832,6 +2850,8 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
     button.title=enabled?'':t('vc.check_start_hint');
   }
   function vcOnStatus(data) {
+    const cpuWarning=$('#vc-cpu-warning');
+    if(cpuWarning){cpuWarning.hidden=data?.vc?.device!=='cpu';cpuWarning.textContent=t('vc.cpu_warning');}
     vcUpdateCheck(data);
     vcSyncMeter(data);
     vcUpdateText(data);

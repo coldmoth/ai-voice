@@ -6,6 +6,7 @@ import logging
 import os
 import secrets
 import signal
+import sys
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
@@ -33,6 +34,35 @@ KEY_BODY_LIMIT = 1024
 logger = logging.getLogger(__name__)
 
 
+def parent_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        handle = kernel.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            return False
+        try:
+            return kernel.WaitForSingleObject(handle, 0) == 0x00000102  # WAIT_TIMEOUT
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def _audio_idle(server) -> bool:
     state = server.control.snapshot()
     return (not state.get("active") and not state.get("monitor_active")
@@ -41,7 +71,7 @@ def _audio_idle(server) -> bool:
 
 def render_page(folder, token):
     """Assemble the single page: stylesheets and scripts are inlined because plain <script src> cannot send the token header."""
-    read = lambda name: (folder / name).read_text()
+    read = lambda name: (folder / name).read_text(encoding="utf-8")
     script = "const APP_TOKEN = " + json.dumps(token) + ";\n" + read("app.js") + "\n" + read("onboarding.js")
     page = read("index.html").replace("__STYLE__", read("style.css") + "\n" + read("onboarding.css"))
     return page.replace("__SCRIPT__", script).encode()
@@ -80,6 +110,8 @@ class DesktopHandler(BaseHTTPRequestHandler):
             return self.respond(403, {"error": t("errors.window_access_denied")})
         path = urlsplit(self.path)
         try:
+            if path.path == "/health":
+                return self.respond(200, {"ok": True})
             if path.path == "/api/vc/engine":
                 return self.respond(200, vc_engine.installer().state())
             if path.path.startswith("/locales/"):
@@ -137,6 +169,7 @@ class DesktopHandler(BaseHTTPRequestHandler):
                 preferences = self.server.catalog.preferences()
                 snapshot = asr.locales_snapshot()
                 return self.respond(200, {"items": self.server.catalog.voices(), "devices": devices,
+                                          "platform": "win" if sys.platform == "win32" else "mac",
                                           "speech_languages": [{"id": x} for x in snapshot["supported"]],
                                           "speech_language": resolve_speech_language(
                                               preferences.get("speech_language"), snapshot["system"], snapshot["supported"]),
@@ -321,6 +354,24 @@ class DesktopHandler(BaseHTTPRequestHandler):
                 return self.respond(200, {"ok": True})
             if path in ("/api/driver/install", "/api/driver/uninstall"):
                 action = path.rsplit("/", 1)[1]
+                if sys.platform == "win32":
+                    if action != "install":
+                        return self.respond(400, {"error": t("errors.driver_unavailable")})
+                    with driver._lock:
+                        if driver._job["state"] == "running":
+                            return self.respond(409, {"error": t("errors.driver_busy")})
+                        if not _audio_idle(self.server):
+                            return self.respond(409, {"error": t("errors.devices_busy")})
+                        driver._job.update(state="running", action=action)
+                    state = "failed"
+                    try:
+                        result = driver.install_cable(
+                            rescan=lambda: devices.rescan() if _audio_idle(self.server) else None)
+                        state = "done" if result["status"] in ("installed", "reboot") else result["status"]
+                        return self.respond(200, result)
+                    finally:
+                        with driver._lock:
+                            driver._job.update(state=state)
                 if driver.job()["state"] == "running":
                     return self.respond(409, {"error": t("errors.driver_busy")})
                 if action == "install" and driver.bundled() is None:
@@ -565,14 +616,12 @@ def main():
         stopped.set()
         threading.Thread(target=server.shutdown, daemon=True).start()
 
-    for sig in [signal.SIGTERM, signal.SIGINT]:
+    for sig in [signal.SIGBREAK if sys.platform == "win32" else signal.SIGTERM, signal.SIGINT]:
         signal.signal(sig, shutdown)
 
     def watch_parent():
         while not stopped.wait(1):
-            try:
-                os.kill(args.parent_pid, 0)
-            except ProcessLookupError:
+            if not parent_alive(args.parent_pid):
                 shutdown()
                 return
     if args.parent_pid:

@@ -8,6 +8,7 @@ import queue
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -226,6 +227,7 @@ class VcWorker:
         self._snapshot = {
             "voice_id": None,
             "state": "idle",
+            "device": None,
             "latency_ms": None,
             "cpu": None,
             "rss_mb": None,
@@ -256,6 +258,7 @@ class VcWorker:
     def _mark_crashed(self):
         with self._snapshot_lock:
             self._crashed = True
+            self._snapshot["device"] = None
             if self._snapshot["state"] not in {"error"}:
                 self._snapshot["state"] = "error"
             if not self._snapshot.get("error"):
@@ -300,6 +303,7 @@ class VcWorker:
         if proc.poll() is not None:
             self._poll_stop.set()
             with self._snapshot_lock:
+                self._snapshot["device"] = None
                 if not self._crashed and self._snapshot["state"] != "idle":
                     self._snapshot["state"] = "error"
                     self._snapshot["error"] = t("status.voice_process_stopped")
@@ -314,6 +318,11 @@ class VcWorker:
                 state = event.get("state")
                 if isinstance(state, str):
                     self._snapshot["state"] = state
+                if state == "loaded":
+                    device = event.get("device")
+                    self._snapshot["device"] = device if device in ("cuda", "mps", "cpu") else None
+                elif state in {"loading", "idle"}:
+                    self._snapshot["device"] = None
                 for key in ("rss_mb", "dropped_blocks", "latency_ms", "processing_ms"):
                     if key in event:
                         self._snapshot[key] = event[key]
@@ -348,6 +357,7 @@ class VcWorker:
                     if self._hop_ms is not None:
                         self._snapshot["latency_ms"] = 2 * self._hop_ms + processing
             elif kind == "error":
+                self._snapshot["device"] = None
                 message = event.get("message")
                 if isinstance(message, str):
                     self._snapshot["error"] = message[:300]
@@ -360,6 +370,7 @@ class VcWorker:
                         self._snapshot["state"] = "loaded"
                     self._stopped_count += 1
                 else:
+                    self._snapshot["device"] = None
                     self._snapshot["state"] = "error"
                     self._crashed = True
                     if not self._snapshot.get("error"):
@@ -433,9 +444,11 @@ class VcWorker:
             log_file.write("libomp linked to torch: " + ", ".join(relinked) + "\n")
         log_file.flush()
         try:
+            process_options = ({'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP}
+                               if sys.platform == 'win32' else {'start_new_session': True})
             proc = self._popen([str(self._python_path), "-m", "vc_worker"],
                                cwd=str(ROOT), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                               stderr=log_file, text=True, bufsize=1, start_new_session=True,
+                               stderr=log_file, text=True, encoding="utf-8", bufsize=1, **process_options,
                                env=env)
         finally:
             # The child holds its own copy of the descriptor.
@@ -446,6 +459,7 @@ class VcWorker:
         with self._snapshot_lock:
             self._snapshot.update({
                 "state": "loading",
+                "device": None,
                 "error": None,
                 "latency_ms": None,
                 "rss_mb": None,
@@ -572,6 +586,8 @@ class VcWorker:
             proc = self._proc
             self._poll_stop.set()
             if proc is None:
+                with self._snapshot_lock:
+                    self._snapshot["device"] = None
                 return
             try:
                 self._write({"cmd": "stop"})
@@ -585,11 +601,19 @@ class VcWorker:
                 proc.wait(timeout=3)
             except Exception:
                 try:
-                    proc.terminate()
+                    if sys.platform == 'win32':
+                        subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)],
+                                       capture_output=True, timeout=5)
+                    else:
+                        proc.terminate()
                     proc.wait(timeout=2)
                 except Exception:
                     try:
-                        os.killpg(proc.pid, signal.SIGKILL)
+                        if sys.platform == 'win32':
+                            subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)],
+                                           capture_output=True, timeout=5)
+                        else:
+                            os.killpg(proc.pid, signal.SIGKILL)
                     except Exception:
                         pass
                     try:
@@ -613,6 +637,7 @@ class VcWorker:
                 poller.join(timeout=3)
             with self._snapshot_lock:
                 self._snapshot["state"] = "idle"
+                self._snapshot["device"] = None
                 self._snapshot["voice_id"] = None
                 self._snapshot["error"] = None
                 self._snapshot["input_level"] = None

@@ -1,17 +1,54 @@
 """Offline supervisor tests with real lightweight subprocesses, no ML imports."""
 import json
 import os
+import shutil
+import signal
 from pathlib import Path
 import subprocess
 import sys
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 
 from ai_voice.vc_store import ROOT, VcStore, VcStoreError
 from ai_voice.i18n import t
 from ai_voice.vc_train import STAGES, VcTrainer, VcTrainError
+
+
+@pytest.mark.parametrize('platform,expected', [('darwin', 11), ('linux', 11), ('win32', 7)])
+def test_epoch_peak_rss_mib(platform, expected):
+    import ast
+    # Execute the real epoch event without importing torch/upstream training code.
+    tree = ast.parse((ROOT / 'vc_worker/train.py').read_text())
+    event = next(node for node in ast.walk(tree)
+                 if isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)
+                 and any(isinstance(key, ast.Constant) and key.value == 'peak_rss_mib'
+                         for key in node.value.keys))
+    scope = dict(sys=SimpleNamespace(platform=platform), epoch=1, epoch_start=0,
+                 ttime=lambda: 1, rss_bytes=lambda: 7 * 1024**2,
+                 resource=SimpleNamespace(RUSAGE_SELF=0,
+                     getrusage=lambda _: SimpleNamespace(ru_maxrss=11 * 1024**2)))
+    exec(compile(ast.Module([event], []), 'vc_worker.train', 'exec'), scope)
+    assert scope['event']['peak_rss_mib'] == expected
+
+
+def test_windows_rss_uses_peak_working_set(monkeypatch):
+    import ctypes
+    from vc_worker import protocol
+
+    def memory_info(handle, counters, size):
+        counters._obj.PeakWorkingSetSize = 7 * 1024**2
+        counters._obj.WorkingSetSize = 2 * 1024**2
+        return True
+
+    kernel = SimpleNamespace(GetCurrentProcess=lambda: 1)
+    psapi = SimpleNamespace(GetProcessMemoryInfo=memory_info)
+    monkeypatch.setattr(protocol, 'sys', SimpleNamespace(platform='win32'))
+    monkeypatch.setattr(ctypes, 'WinDLL', lambda name, **_: kernel if name == 'kernel32' else psapi,
+                        raising=False)
+    assert protocol.rss_bytes() == 7 * 1024**2
 
 
 @pytest.fixture
@@ -40,8 +77,12 @@ def trainer(voice, tmp_path, body='time.sleep(60)\n', **kwargs):
     def offline_popen(args, **options):
         # Exercise the supervisor's exact command contract without macOS policy
         # changing the QA runner's scheduling or requiring its sandbox entitlement.
-        assert args[:3] == ['/usr/sbin/taskpolicy', '-c', 'utility']
-        return real_popen(args[3:], **options)
+        if sys.platform == 'darwin':
+            assert args[:6] == ['/usr/sbin/taskpolicy', '-c', 'utility', 'nice', '-n', '15']
+            args = args[6:]
+        else:
+            assert args[0] == sys.executable
+        return real_popen(args, **options)
     return VcTrainer(store, python_path=sys.executable,
                      runner_path=runner(tmp_path, body), epochs=4, popen=offline_popen, **kwargs)
 
@@ -49,6 +90,118 @@ def trainer(voice, tmp_path, body='time.sleep(60)\n', **kwargs):
 def finished(train):
     assert train._job['finished'].wait(8), train.status()
     return train.status()
+
+
+def test_reader_termination_error_still_finishes(voice, tmp_path, monkeypatch):
+    train = trainer(voice, tmp_path, 'time.sleep(.1)\nsys.exit(3)\n')
+    def fail(_):
+        raise OSError('termination failed')
+    monkeypatch.setattr(train, '_terminate', fail)
+    train.start('voice')
+    assert finished(train)['state'] == 'failed'
+    assert train._job['process'].poll() is not None
+    assert train._job['log'].closed
+    train.close()
+
+
+def test_reader_cleanup_error_still_finishes(voice, tmp_path, monkeypatch):
+    train = trainer(voice, tmp_path, "while not (directory / 'finish-now').exists(): time.sleep(.01)\nsys.exit(3)\n")
+    train.start('voice')
+    def fail(*args, **kwargs):
+        raise RuntimeError('cleanup failed')
+    monkeypatch.setattr(train, '_cleanup', fail)
+    (voice[1] / 'finish-now').touch()
+    assert finished(train)['state'] == 'failed'
+    assert train._job['log'].closed
+    train.close()
+
+
+@pytest.mark.parametrize('already_gone', [False, True])
+def test_windows_terminate_tree(voice, tmp_path, monkeypatch, already_gone):
+    from types import SimpleNamespace
+    from ai_voice import vc_train
+    train = trainer(voice, tmp_path)
+    calls = []
+    process = SimpleNamespace(pid=34567, wait=lambda **kwargs: calls.append(('wait', kwargs)))
+    monkeypatch.setattr(vc_train, 'sys', SimpleNamespace(platform='win32'), raising=False)
+    def taskkill(args, **kwargs):
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, int(already_gone))
+    monkeypatch.setattr(subprocess, 'run', taskkill)
+    train._terminate(dict(process=process, terminate_lock=threading.Lock()))
+    assert calls[0][0] == ['taskkill', '/T', '/F', '/PID', '34567']
+    assert calls[0][1]['capture_output'] is True
+    assert calls[-1][0] == 'wait'
+
+
+@pytest.mark.parametrize('action', ['cancel', 'close'])
+def test_windows_stop_tolerates_timeout_after_kill(voice, tmp_path, monkeypatch, action):
+    from types import SimpleNamespace
+    from ai_voice import vc_train
+    train = trainer(voice, tmp_path)
+    waits = []
+    def wait(timeout):
+        waits.append(timeout)
+        raise subprocess.TimeoutExpired('trainer', timeout)
+    process = SimpleNamespace(pid=34567, wait=wait, kill=lambda: None)
+    done = threading.Event()
+    # Completion may be signalled concurrently by the reader after _stop begins.
+    def finished_wait():
+        done.set()
+    train._job = dict(process=process, terminate_lock=threading.Lock(),
+                      status=dict(state='running', voice_id='voice', total_epochs=4),
+                      stop=threading.Event(), paused_at=None,
+                      finished=SimpleNamespace(is_set=done.is_set, wait=finished_wait))
+    monkeypatch.setattr(vc_train, 'sys', SimpleNamespace(platform='win32'))
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **k: subprocess.CompletedProcess(a, 0))
+    getattr(train, action)()
+    assert train._job['status']['state'] == 'cancelled'
+    assert done.is_set()
+    assert waits == [3, 3]
+
+
+@pytest.mark.parametrize('matching', [False, True])
+def test_windows_orphan_checks_command_before_taskkill(voice, tmp_path, monkeypatch, matching):
+    from types import SimpleNamespace
+    from ai_voice import vc_train
+    train = trainer(voice, tmp_path)
+    train.pid_path.write_text('34567', encoding='utf-8')
+    calls = []
+    monkeypatch.setattr(vc_train, 'sys', SimpleNamespace(platform='win32'))
+    def run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout='python train_runner.py' if matching else 'other_app')
+    monkeypatch.setattr(subprocess, 'run', run)
+    train._kill_orphan()
+    assert calls[0][0] == 'powershell'
+    assert calls[0][1:4] == ['-NoProfile', '-NonInteractive', '-Command']
+    assert 'ProcessId = 34567' in calls[0][-1]
+    assert "CommandLine -like '*train_runner*'" in calls[0][-1]
+    assert calls[1:] == ([['taskkill', '/T', '/F', '/PID', '34567']] if matching else [])
+    assert not train.pid_path.exists()
+
+
+def test_windows_pause_gates_reader_and_queue_without_posix_signals(voice, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from ai_voice import vc_train
+    now = [0.]
+    train = trainer(voice, tmp_path, clock=lambda: now[0])
+    train.start('voice')
+    def unexpected(*args, **kwargs):
+        pytest.fail('Windows pause must not call killpg')
+    with monkeypatch.context() as windows:
+        windows.setattr(vc_train, 'sys', SimpleNamespace(platform='win32'))
+        windows.setattr(os, 'killpg', unexpected, raising=False)
+        now[0] = 1
+        train.user_pause()
+        assert train.status()['state'] == 'paused'
+        assert not train._resumed.is_set()
+        now[0] = 101
+        train.user_resume()
+        assert train.status()['state'] == 'running'
+        assert train._resumed.is_set()
+        assert train._job['paused_seconds'] == 100
+    train.close()
 
 
 SUCCESS = '''
@@ -188,10 +341,12 @@ time.sleep(60)
     train.cancel()
     train.cancel()
     assert train.status()['state'] == 'cancelled'
-    with pytest.raises(ProcessLookupError):
-        os.kill(pid, 0)
-    with pytest.raises(ChildProcessError):
-        os.waitpid(pid, os.WNOHANG)
+    assert train._job['process'].poll() is not None
+    if sys.platform == 'darwin':
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+        with pytest.raises(ChildProcessError):
+            os.waitpid(pid, os.WNOHANG)
     assert not (voice[1] / 'train-work').exists()
     assert (voice[1] / 'dataset').exists()
     assert voice[0].get('voice')['kind'] == 'zeroshot'
@@ -199,12 +354,57 @@ time.sleep(60)
     train.cancel()
 
 
-def test_deleted_voice_cancelled(voice, tmp_path):
-    train = trainer(voice, tmp_path, SUCCESS.replace("for stage", "time.sleep(.2)\nfor stage", 1))
+@pytest.mark.parametrize('paused', [False, True])
+def test_deleted_voice_cancelled(voice, tmp_path, monkeypatch, paused):
+    train = trainer(voice, tmp_path, '''
+held = (directory / 'dataset/clip.wav').open('rb')
+(directory / 'handles-open').touch()
+time.sleep(60)
+''')
     train.start('voice')
+    job = train._job
+    deadline = time.monotonic() + 2
+    while not (voice[1] / 'handles-open').exists() and time.monotonic() < deadline:
+        time.sleep(.01)
+    assert (voice[1] / 'handles-open').exists()
+    if paused:
+        train.user_pause()
+    rmtree = shutil.rmtree
+    def remove(path, *args, **kwargs):
+        if Path(path) == voice[1]:
+            assert job['finished'].is_set()
+            assert job['status']['state'] == 'cancelled'
+            assert job['process'].poll() is not None
+            assert job['log'].closed
+            assert job['process'].stdout.closed
+            with pytest.raises(VcTrainError):
+                train.start('voice')
+        return rmtree(path, *args, **kwargs)
+    monkeypatch.setattr(shutil, 'rmtree', remove)
     voice[0].delete('voice')
     assert finished(train)['state'] == 'cancelled'
     assert not voice[1].exists()
+
+
+def test_deleted_queued_voice_never_starts(voice, tmp_path):
+    train = trainer(voice, tmp_path)
+    train.pause()
+    train.enqueue('voice', 'fast')
+    voice[0].delete('voice')
+    train.resume()
+    assert train._job is None
+    assert train._queue == []
+    assert not voice[1].exists()
+    train.close()
+
+
+def test_missing_voice_metadata_cancelled(voice, tmp_path):
+    train = trainer(voice, tmp_path)
+    train.start('voice')
+    (voice[1] / 'meta.json').unlink()
+    assert finished(train)['state'] == 'cancelled'
+    assert train._job['process'].poll() is not None
+    assert train._job['log'].closed
 
 
 def test_rename_during_training_keeps_going(voice, tmp_path):
@@ -226,8 +426,12 @@ def test_popen_contract(voice, tmp_path):
     train.start('voice')
     assert finished(train)['state'] == 'done'
     args, kwargs = calls[0]
-    assert args[:4] == ['nice', '-n', '15', sys.executable]
-    assert kwargs['start_new_session'] is True
+    assert args[0] == sys.executable
+    if sys.platform == 'win32':
+        assert kwargs['creationflags'] == subprocess.CREATE_NEW_PROCESS_GROUP
+        assert 'start_new_session' not in kwargs
+    else:
+        assert kwargs['start_new_session'] is True
     assert kwargs['shell'] is False
     assert kwargs['env']['SYSTEM_VERSION_COMPAT'] == '0'
     assert kwargs['env']['OMP_NUM_THREADS'] == '4'
@@ -332,8 +536,12 @@ finally:
         time.sleep(.01)
     child_pid = int((voice[1] / 'child-pid').read_text())
     train.cancel()
-    with pytest.raises(ProcessLookupError):
-        os.kill(child_pid, 0)
+    if sys.platform == 'win32':
+        from ai_voice.desktop import parent_alive
+        assert not parent_alive(child_pid)
+    else:
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
     assert train._job['process'].poll() is not None
 
 
@@ -348,17 +556,24 @@ def test_empty_missing_model_fails(voice, tmp_path, model_content):
     assert voice[0].get('voice')['kind'] == 'zeroshot'
 
 
-def test_pause_uses_process_group_and_excludes_time(voice, tmp_path, monkeypatch):
-    import signal
-    now = [0.]
-    train = trainer(voice, tmp_path, clock=lambda: now[0])
-    train.start('voice')
+@pytest.fixture(params=['portable', pytest.param('darwin-signals', marks=pytest.mark.skipif(
+    sys.platform != 'darwin', reason='macOS only'))])
+def pause_signals(request, monkeypatch):
+    if request.param == 'portable':
+        return None
     actual = os.killpg
     calls = []
     def killpg(pid, sig):
         calls.append(sig)
         actual(pid, sig)
     monkeypatch.setattr(os, 'killpg', killpg)
+    return calls
+
+
+def test_pause_excludes_time(voice, tmp_path, pause_signals):
+    now = [0.]
+    train = trainer(voice, tmp_path, clock=lambda: now[0])
+    train.start('voice')
     try:
         now[0] = 1
         train._event(train._job, dict(stage='train', epoch=1))
@@ -367,10 +582,12 @@ def test_pause_uses_process_group_and_excludes_time(voice, tmp_path, monkeypatch
         assert train.status()['stage_label'] == 'Paused: Live voice is running'
         now[0] = 101
         train.resume()
+        assert train._job['paused_seconds'] == 100
         now[0] = 103
         train._event(train._job, dict(stage='train', epoch=2))
         assert train.status()['eta_s'] == 4
-        assert calls[:2] == [signal.SIGSTOP, signal.SIGCONT]
+        if pause_signals is not None:
+            assert pause_signals == [signal.SIGSTOP, signal.SIGCONT]
     finally:
         train.cancel()
 
@@ -455,6 +672,7 @@ def test_training_stats_last_three_and_prediction(voice, tmp_path):
 
 
 @pytest.mark.parametrize('matching', [True, False])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_orphan_pid_checked_and_group_killed(voice, tmp_path, monkeypatch, matching):
     import signal
     pid_path = voice[0].root.parent / 'vc-train.pid'
@@ -565,19 +783,12 @@ emit(stage='prepare', progress=1)
         train.close()
 
 
-def test_overlapping_pause_owners_keep_process_and_queue_paused(voice, tmp_path, monkeypatch):
-    import signal
+def test_overlapping_pause_owners_keep_process_and_queue_paused(voice, tmp_path, pause_signals):
     now = [0.]
     train = trainer(voice, tmp_path, clock=lambda: now[0])
     train.start('voice')
     other = second_voice(voice)
     train.enqueue(other, 'fast')
-    actual = os.killpg
-    calls = []
-    def killpg(pid, sig):
-        calls.append(sig)
-        actual(pid, sig)
-    monkeypatch.setattr(os, 'killpg', killpg)
     try:
         now[0] = 1
         train._event(train._job, dict(stage='train', epoch=1))
@@ -588,13 +799,15 @@ def test_overlapping_pause_owners_keep_process_and_queue_paused(voice, tmp_path,
         train.resume()  # Autotune completes; VC still owns its pause.
         assert train.status()['state'] == 'paused'
         assert not train._resumed.is_set()
-        assert calls == [signal.SIGSTOP]
+        if pause_signals is not None:
+            assert pause_signals == [signal.SIGSTOP]
         now[0] = 101
         train.resume()
         now[0] = 103
         train._event(train._job, dict(stage='train', epoch=2, seconds=102))
         assert train.status()['eta_s'] == 4
-        assert calls == [signal.SIGSTOP, signal.SIGCONT]
+        if pause_signals is not None:
+            assert pause_signals == [signal.SIGSTOP, signal.SIGCONT]
         train.resume()  # Unmatched release must not corrupt the next acquisition.
         assert train.pause() is True
         train.cancel()
@@ -647,17 +860,10 @@ time.sleep(60)
         train.close()
 
 
-def test_user_pause_resume_signals_and_label(voice, tmp_path, monkeypatch):
-    import signal
+def test_user_pause_resume_and_label(voice, tmp_path, pause_signals):
     now = [0.]
     train = trainer(voice, tmp_path, clock=lambda: now[0])
     train.start('voice')
-    actual = os.killpg
-    calls = []
-    def killpg(pid, sig):
-        calls.append(sig)
-        actual(pid, sig)
-    monkeypatch.setattr(os, 'killpg', killpg)
     try:
         now[0] = 1
         train._event(train._job, dict(stage='train', epoch=1))
@@ -666,26 +872,21 @@ def test_user_pause_resume_signals_and_label(voice, tmp_path, monkeypatch):
         assert status['stage_label'] == 'Paused'
         assert status['user_paused'] is True
         assert train.user_pause()['user_paused'] is True  # Идемпотентно.
-        assert calls == [signal.SIGSTOP]
+        if pause_signals is not None:
+            assert pause_signals == [signal.SIGSTOP]
         status = train.user_resume()
         assert status['state'] == 'running'
         assert status['user_paused'] is False
-        assert calls == [signal.SIGSTOP, signal.SIGCONT]
+        if pause_signals is not None:
+            assert pause_signals == [signal.SIGSTOP, signal.SIGCONT]
         assert train.user_resume()['user_paused'] is False
     finally:
         train.cancel()
 
 
-def test_user_pause_survives_vc_resume(voice, tmp_path, monkeypatch):
-    import signal
+def test_user_pause_survives_vc_resume(voice, tmp_path, pause_signals):
     train = trainer(voice, tmp_path)
     train.start('voice')
-    actual = os.killpg
-    calls = []
-    def killpg(pid, sig):
-        calls.append(sig)
-        actual(pid, sig)
-    monkeypatch.setattr(os, 'killpg', killpg)
     try:
         train.user_pause()   # Пользователь ставит паузу.
         train.pause()        # Живой голос добавляет свою паузу.
@@ -693,10 +894,12 @@ def test_user_pause_survives_vc_resume(voice, tmp_path, monkeypatch):
         train.resume()       # Живой голос остановлен: обучение остаётся на паузе.
         assert train.status()['state'] == 'paused'
         assert train.status()['stage_label'] == 'Paused'
-        assert calls == [signal.SIGSTOP]
+        if pause_signals is not None:
+            assert pause_signals == [signal.SIGSTOP]
         train.user_resume()
         assert train.status()['state'] == 'running'
-        assert calls == [signal.SIGSTOP, signal.SIGCONT]
+        if pause_signals is not None:
+            assert pause_signals == [signal.SIGSTOP, signal.SIGCONT]
     finally:
         train.cancel()
 
@@ -780,11 +983,11 @@ def test_dataset_scale_check_rejects_integer_clips(tmp_path, monkeypatch):
 
 def test_divergence_guard_aborts_blown_up_gan():
     import ast
-    source = (ROOT / 'vc_worker/train_mps.py').read_text()
+    source = (ROOT / 'vc_worker/train.py').read_text()
     node = next(n for n in ast.parse(source).body
                 if isinstance(n, ast.FunctionDef) and n.name == 'check_divergence')
     scope = {}
-    exec(compile(ast.Module([node], []), 'train_mps', 'exec'), scope)
+    exec(compile(ast.Module([node], []), 'vc_worker.train', 'exec'), scope)
     check = scope['check_divergence']
     check(4.0, 40.0, 30.0)
     for args in ((919720192.0, 1.0, 30.0), (4.0, float('nan'), 30.0), (4.0, 40.0, 1000.0)):

@@ -8,7 +8,11 @@ from pathlib import Path
 import tempfile
 import os
 import signal
+import subprocess
+import sys
 import time
+import uuid
+from typing import Literal
 
 import numpy as np
 
@@ -33,10 +37,12 @@ async def supported_locales(*, helper_path=None, timeout: float = 5.0) -> dict:
     result = LOCALES_FALLBACK
     process = None
     try:
+        process_options = ({'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP}
+                           if sys.platform == 'win32' else {'start_new_session': True})
         process = await asyncio.create_subprocess_exec(
             str(helper_path or HELPER_BINARY), "--locales",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-            start_new_session=True)
+            **process_options)
         stdout, _ = await asyncio.wait_for(process.communicate(), timeout)
         if process.returncode == 0:
             for line in stdout.splitlines():
@@ -53,7 +59,12 @@ async def supported_locales(*, helper_path=None, timeout: float = 5.0) -> dict:
         if process is not None:
             # Reap shell wrappers too: a child can otherwise keep stdout open.
             try:
-                os.killpg(process.pid, signal.SIGKILL)
+                if sys.platform == 'win32':
+                    await asyncio.to_thread(subprocess.run,
+                                            ['taskkill', '/T', '/F', '/PID', str(process.pid)],
+                                            capture_output=True, timeout=5)
+                else:
+                    os.killpg(process.pid, signal.SIGKILL)
             except (ProcessLookupError, PermissionError):  # macOS: EPERM once the group leader is a zombie
                 pass
             await process.communicate()
@@ -182,10 +193,18 @@ class SpeechASR:
 
     async def doctor(self) -> dict:
         """Read capability and permission state without capture or authorization dialogs."""
+        if sys.platform == "win32":
+            # Windows handles microphone access when capture first starts.
+            return {"event": "doctor", "input": self.input_device, "language": self.language,
+                    "microphone_authorization": "authorized", "speech_authorization": "authorized",
+                    "available": True, "supports_on_device": True, "requires_on_device": True,
+                    "input_found": True, "capture_started": False}
         return await self._report(["--doctor", "--input", self.input_device, "--language", self.language], 10)
 
     async def authorize_only(self, kind: str) -> dict:
         """Ask for one permission (system dialog may wait for the user) and return the doctor report."""
+        if sys.platform == "win32":
+            return await SpeechASR.doctor(self)
         return await self._report(["--authorize", "--only", kind, "--input", self.input_device,
                                    "--language", self.language], 120)
 
@@ -268,6 +287,14 @@ class SpeechASR:
         value = float(db)
         if value < -24.0 or value > 12.0 or not math.isfinite(value):
             raise ValueError("input_gain_db must be between -24 and 12 dB")
+        if sys.platform == "win32":
+            queue = getattr(self, "_capture_queue", None)
+            if queue is None:
+                raise ASRError("Microphone capture is not running; cannot change input gain")
+            self._capture_gain_db = value
+            await queue.put({"event": "input_gain", "db": value, "requested_db": value,
+                             "utterance_id": "", "time_ms": time.monotonic() * 1000})
+            return
         app = getattr(self, "_active_app", None)
         if app is None:
             raise ASRError("SpeechHelper is not running; cannot change input gain")
@@ -303,6 +330,14 @@ class SpeechASR:
         value = float(initial_input_gain_db)
         if not math.isfinite(value) or value < -24.0 or value > 12.0:
             raise ValueError("initial_input_gain_db must be between -24 and 12 dB")
+        if sys.platform == "win32":
+            capture = self._capture_events(value)
+            try:
+                async for event in capture:
+                    yield event
+            finally:
+                await capture.aclose()
+            return
         process = await self._spawn(["--input", self.input_device, "--language", self.language,
                                      "--endpoint-ms", str(self.endpoint_ms),
                                      "--threshold-db", str(self.threshold_db),
@@ -336,6 +371,94 @@ class SpeechASR:
             if not stderr_task.done():
                 stderr_task.cancel()
             await asyncio.gather(stderr_task, return_exceptions=True)
+
+    async def _capture_events(self, gain_db: float) -> AsyncIterator[dict]:
+        import sounddevice as sd
+        from .devices import stream_extra_settings
+        from .vad import VAD
+
+        loop = asyncio.get_running_loop()
+        queue = asyncio.Queue(maxsize=256)
+        self._capture_queue, self._capture_gain_db = queue, gain_db
+        vad = VAD(min_silence_ms=self.endpoint_ms, threshold=self.threshold_db)
+        uid = ""
+        failed = False
+
+        def enqueue(item):
+            nonlocal failed
+            if self._capture_queue is not queue or failed:
+                return
+            if queue.full():
+                failed = True
+                while not queue.empty():
+                    queue.get_nowait()
+                item = ASRError("Microphone capture queue overflow")
+            queue.put_nowait(item)
+
+        def callback(indata, frames, timing, status):
+            if status:
+                status.input_overflow = False
+            if status:
+                item = ASRError(f"Microphone capture: {status}")
+            else:
+                item = np.clip(indata[:, 0] * 10 ** (self._capture_gain_db / 20), -1, 1).astype(np.float32)
+            try:
+                loop.call_soon_threadsafe(enqueue, item)
+            except RuntimeError:
+                pass  # The event loop may already be closed during shutdown.
+
+        def finished():
+            try:
+                loop.call_soon_threadsafe(enqueue, None)
+            except RuntimeError:
+                pass
+
+        def event(kind, **fields):
+            return {"event": kind, "utterance_id": uid,
+                    "time_ms": time.monotonic() * 1000, **fields}
+
+        try:
+            device = None if self.input_device == "default" else self.input_device
+            with sd.InputStream(samplerate=16000, channels=1, dtype="float32",
+                                device=device,
+                                extra_settings=stream_extra_settings(device, kind="input"),
+                                callback=callback, finished_callback=finished):
+                yield event("ready", input=self.input_device, input_channels=1,
+                            recognition_channels=1, recognition_channel=0, sample_rate=16000,
+                            recognition_sample_rate=16000, language=self.language,
+                            on_device=False, engine="raw", input_gain_db=gain_db)
+                while True:
+                    item = await queue.get()
+                    if item is None:
+                        break
+                    if isinstance(item, Exception):
+                        raise item
+                    if isinstance(item, dict):
+                        yield item
+                        continue
+                    was_active = vad.active
+                    segments = vad.feed(item)
+                    if not was_active and vad.active:
+                        uid = str(uuid.uuid4())
+                        yield event("vad_start", preroll_ms=vad.preroll_ms,
+                                    buffer_ms=sum(frame.size for frame in vad.frames) / 16,
+                                    threshold_db=self.threshold_db)
+                        audio = np.concatenate(vad.frames)
+                    elif was_active:
+                        audio = item
+                    else:
+                        continue
+                    pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes()
+                    yield event("audio", pcm=base64.b64encode(pcm).decode("ascii"))
+                    if segments:
+                        yield event("vad_end")
+        except ASRError:
+            raise
+        except Exception as exc:
+            raise ASRError(f"Microphone capture failed: {exc}") from exc
+        finally:
+            self._capture_queue = None
+            vad.reset()
 
 
 PERMISSION_KINDS = ("microphone", "speech")
@@ -399,6 +522,13 @@ MAX_UTTERANCE_SECONDS = 30
 _models: dict = {}
 
 
+def engine_for_language(lang: str, pref: str | None = None,
+                        platform: str = sys.platform) -> Literal["apple", "gigaam", "whisper"]:
+    if platform == "win32":
+        return "gigaam" if lang.lower().startswith("ru") else "whisper"
+    return "gigaam" if pref == "gigaam" else "apple"
+
+
 def load_gigaam(name: str = GIGAAM_MODEL):
     """Load (and on first use download, ~200 MB) the Sber GigaAM ONNX model; cached per process."""
     if name not in _models:
@@ -423,17 +553,20 @@ class GigaAMASR(SpeechASR):
         super().__init__(*args, **kwargs)
         self.model = model
 
+    def _load_model(self):
+        return load_gigaam(self.model)
+
     async def doctor(self) -> dict:
         report = await super().doctor()
-        await asyncio.to_thread(load_gigaam, self.model)
+        await asyncio.to_thread(self._load_model)
         return report
 
     def _transcribe(self, pcm: bytes) -> str:
         audio = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
-        return str(load_gigaam(self.model).recognize(audio, sample_rate=16000)).strip()
+        return str(self._load_model().recognize(audio, sample_rate=16000)).strip()
 
     async def events(self, *, initial_input_gain_db: float | None = None) -> AsyncIterator[dict]:
-        await asyncio.to_thread(load_gigaam, self.model)
+        await asyncio.to_thread(self._load_model)
         chunks: dict[str, bytearray] = {}
         async for event in super().events(initial_input_gain_db=initial_input_gain_db):
             kind, uid = event["event"], event.get("utterance_id")
@@ -461,3 +594,18 @@ class GigaAMASR(SpeechASR):
                 if text:
                     yield {"event": "final", "utterance_id": uid, "text": text,
                            "time_ms": time.monotonic() * 1000}
+
+
+class WhisperASR(GigaAMASR):
+    """Local Whisper recognition using the same capture and VAD event stream."""
+
+    def __init__(self, *args, model: str = "small", device: str = "auto", **kwargs):
+        super().__init__(*args, model=model, **kwargs)
+
+    def _load_model(self):
+        return load_gigaam(f"onnx-community/whisper-{self.model}")
+
+    def _transcribe(self, pcm: bytes) -> str:
+        audio = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
+        language = self.language.lower().replace("_", "-").split("-", 1)[0]
+        return str(self._load_model().recognize(audio, sample_rate=16000, language=language)).strip()

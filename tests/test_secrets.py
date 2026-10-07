@@ -1,6 +1,7 @@
 import importlib
 import shlex
 import subprocess
+import sys
 
 import pytest
 
@@ -30,6 +31,7 @@ def security_run(monkeypatch):
     return calls, responses
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_load_key_uses_new_service(security_run):
     calls, responses = security_run
     responses.append((0, "test-key\n"))
@@ -39,6 +41,7 @@ def test_load_key_uses_new_service(security_run):
     assert secrets.KEYCHAIN_ACCOUNT == "default"
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_load_key_supports_named_keys(security_run):
     calls, responses = security_run
     responses.append((0, "other-key\n"))
@@ -48,12 +51,14 @@ def test_load_key_supports_named_keys(security_run):
 
 
 @pytest.mark.parametrize("error", [OSError("unavailable"), subprocess.TimeoutExpired("security", 15)])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_load_key_returns_none_on_subprocess_error(security_run, error):
     _, responses = security_run
     responses.append(error)
     assert secrets.load_key() is None
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_save_key_uses_stdin_not_argv(security_run):
     calls, responses = security_run
     value = 'ab"c\\d'
@@ -68,6 +73,7 @@ def test_save_key_uses_stdin_not_argv(security_run):
     assert secrets.load_key() == value
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_save_key_supports_named_keys(security_run):
     calls, responses = security_run
     responses.append((0, ""))
@@ -94,6 +100,7 @@ def test_save_key_rejects_empty_value(security_run):
 
 @pytest.mark.parametrize("response", [(1, "private-output"), OSError("private-output"),
                                       subprocess.TimeoutExpired("security", 15, output="private-output")])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_save_key_raises_without_exposing_subprocess_output(security_run, response):
     _, responses = security_run
     responses.append(response)
@@ -105,6 +112,7 @@ def test_save_key_raises_without_exposing_subprocess_output(security_run, respon
 
 
 @pytest.mark.parametrize("status", [0, 44])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_delete_key_success_or_missing_is_not_an_error(security_run, status):
     calls, responses = security_run
     responses.append((status, ""))
@@ -115,6 +123,7 @@ def test_delete_key_success_or_missing_is_not_an_error(security_run, status):
 
 @pytest.mark.parametrize("response", [(1, "private-output"), OSError("private-output"),
                                       subprocess.TimeoutExpired("security", 15, output="private-output")])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_delete_key_raises_on_other_errors(security_run, response):
     _, responses = security_run
     responses.append(response)
@@ -124,6 +133,7 @@ def test_delete_key_raises_on_other_errors(security_run, response):
     assert caught.value.__suppress_context__
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_migrate_copies_when_new_missing(monkeypatch, security_run):
     calls, responses = security_run
     responses.extend([(44, ""), (0, "k1\n")])
@@ -138,6 +148,7 @@ def test_migrate_copies_when_new_missing(monkeypatch, security_run):
     assert all("delete-generic-password" not in args for args, _ in calls)
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_migrate_noop_when_new_present(security_run):
     calls, responses = security_run
     responses.append((0, "new-key\n"))
@@ -146,6 +157,7 @@ def test_migrate_noop_when_new_present(security_run):
 
 
 @pytest.mark.parametrize("legacy_response", [(44, ""), (1, "private-output"), (0, "")])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_migrate_noop_when_legacy_missing(security_run, legacy_response):
     calls, responses = security_run
     responses.extend([(44, ""), legacy_response])
@@ -155,6 +167,7 @@ def test_migrate_noop_when_legacy_missing(security_run, legacy_response):
 
 
 @pytest.mark.parametrize("error", [OSError("unavailable"), subprocess.TimeoutExpired("security", 15)])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_migrate_returns_false_on_lookup_error(security_run, error):
     _, responses = security_run
     responses.extend([error, error])
@@ -163,6 +176,7 @@ def test_migrate_returns_false_on_lookup_error(security_run, error):
 
 @pytest.mark.parametrize("response", [(1, "private-output"), OSError("unavailable"),
                                       subprocess.TimeoutExpired("security", 15)])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_migrate_returns_false_when_copy_fails(security_run, response):
     calls, responses = security_run
     responses.extend([(44, ""), (0, "k1\n"), response])
@@ -193,6 +207,7 @@ def test_main_migrates_once_before_startup(monkeypatch, security_run, entrypoint
 
 
 @pytest.mark.parametrize("response,expected", [((0, ""), True), ((44, ""), False), (OSError("x"), False)])
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_has_key(security_run, response, expected):
     calls, responses = security_run
     responses.append(response)

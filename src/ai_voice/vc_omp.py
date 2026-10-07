@@ -1,10 +1,13 @@
 """Use torch's OpenMP runtime for the VC environment's bundled libraries."""
 import os
+import sys
 from pathlib import Path
 
 
 def dedupe_libomp(python_path) -> list[str]:
     """Point bundled libomp copies at torch's one; return relative paths that were relinked."""
+    if sys.platform == "win32":
+        return []
     venv = Path(python_path).parent.parent
     relinked = []
     for site in sorted(venv.glob('lib/python3*/site-packages')):

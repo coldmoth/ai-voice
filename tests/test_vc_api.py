@@ -2117,12 +2117,37 @@ def test_vc_text_worker_commands_events_and_sample_rate():
     worker.inject('abc', Path('/tmp/abc.f32'), 'monitor')
     worker._proc = SimpleNamespace()
     worker.cancel_inject()
-    assert sent == [{'cmd':'inject', 'id':'abc', 'path':'/tmp/abc.f32', 'target':'monitor'}, {'cmd':'inject_cancel'}]
+    assert sent == [{'cmd':'inject', 'id':'abc', 'path':str(Path('/tmp/abc.f32')), 'target':'monitor'}, {'cmd':'inject_cancel'}]
     worker._handle_event({'event':'status', 'state':'running', 'config':{'sample_rate':48000, 'hop_ms':256}})
     assert worker._sample_rate == 48000
     for state in ('playing', 'done', 'cancelled'):
         worker._handle_event({'event':'inject', 'id':'abc', 'state':state})
         assert worker._snapshot['inject'] == {'id':'abc', 'state':state}
+
+
+def test_windows_worker_stop_kills_tree_before_parent(monkeypatch):
+    import subprocess
+    from types import SimpleNamespace
+    from ai_voice import vc_control
+    worker = VcWorker()
+    worker._write = lambda _: None
+    calls = []
+    def wait(timeout):
+        calls.append('wait')
+        if calls == ['wait']:
+            raise subprocess.TimeoutExpired('worker', timeout)
+        return 0
+    def terminate():
+        pytest.fail('Terminating the parent first can orphan the worker descendants')
+    worker._proc = SimpleNamespace(pid=34567, wait=wait, terminate=terminate, stdin=None, stdout=None)
+    monkeypatch.setattr(vc_control, 'sys', SimpleNamespace(platform='win32'))
+    def run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0)
+    monkeypatch.setattr(subprocess, 'run', run)
+    worker.stop()
+    assert calls == ['wait', ['taskkill', '/T', '/F', '/PID', '34567'], 'wait']
+    assert worker._proc is None
     def broken(payload):
         raise BrokenPipeError()
     worker._write = broken

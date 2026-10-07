@@ -1,5 +1,6 @@
 """Offline libomp relinking and worker launch coverage."""
 import os
+import sys
 
 import pytest
 
@@ -24,6 +25,7 @@ def _venv(tmp_path, torch=True):
     return python, site
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_dedupe_libomp_relative_links_and_idempotence(tmp_path):
     python, site = _venv(tmp_path)
     paths = ['faiss/.dylibs/libomp.dylib', 'sklearn/.dylibs/libomp.dylib']
@@ -36,6 +38,7 @@ def test_dedupe_libomp_relative_links_and_idempotence(tmp_path):
     assert dedupe_libomp(python) == []
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
 def test_dedupe_libomp_without_torch_leaves_files(tmp_path):
     python, site = _venv(tmp_path, torch=False)
     assert dedupe_libomp(python) == []
@@ -65,10 +68,14 @@ def test_worker_dedupes_libomp_with_fallback_only_on_error(tmp_path, monkeypatch
         if fails:
             assert popen.kwargs['env']['KMP_DUPLICATE_LIB_OK'] == 'TRUE'
             assert 'libomp dedupe failed: read-only venv; KMP_DUPLICATE_LIB_OK=TRUE' in log
-        else:
+        elif sys.platform == 'darwin':
             assert 'KMP_DUPLICATE_LIB_OK' not in popen.kwargs['env']
             assert (site / 'faiss/.dylibs/libomp.dylib').is_symlink()
             assert (site / 'sklearn/.dylibs/libomp.dylib').is_symlink()
             assert 'libomp linked to torch: faiss/.dylibs/libomp.dylib, sklearn/.dylibs/libomp.dylib' in log
+        else:
+            assert 'KMP_DUPLICATE_LIB_OK' not in popen.kwargs['env']
+            assert not (site / 'faiss/.dylibs/libomp.dylib').is_symlink()
+            assert 'libomp linked' not in log
     finally:
         worker.stop()

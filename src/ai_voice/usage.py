@@ -22,7 +22,7 @@ class UsageTracker:
         try:
             if self.path is None:
                 raise ValueError
-            raw = json.loads(self.path.read_text()).get("days", {})
+            raw = json.loads(self.path.read_text(encoding="utf-8")).get("days", {})
             for key, value in raw.items():
                 date.fromisoformat(key)
                 if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
@@ -54,7 +54,7 @@ class UsageTracker:
         tmp = self.path.with_name(self.path.name + ".tmp")
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(json.dumps({"days": self.days}))
+            tmp.write_text(json.dumps({"days": self.days}), encoding="utf-8")
             os.replace(tmp, self.path)
         except OSError:
             return
