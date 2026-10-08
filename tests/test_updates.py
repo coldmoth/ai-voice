@@ -164,3 +164,148 @@ def test_external_hosts():
     source = (Path(__file__).resolve().parents[1] / "macos/Desktop.swift").read_text()
     hosts = re.search(r"externalHosts: Set<String> = \[(.*?)\]", source, re.S)[1]
     assert '"github.com"' in hosts and '"api.github.com"' not in hosts
+
+
+# ---- In-app install ----
+import hashlib
+import subprocess
+import sys
+
+BASE = updates.RELEASE_URL_PREFIX + "download/v9.0.0/"
+CDN = "https://release-assets.githubusercontent.com/blob/1"
+PAYLOAD = b"installer-bytes" * 100
+GOOD = hashlib.sha256(PAYLOAD).hexdigest()
+
+
+def asset_client(*, checksum=f"{GOOD}  AI-Voice-Setup-9.0.0.exe\n", payload=PAYLOAD, redirect=CDN, seen=None):
+    def handle(request):
+        url = str(request.url)
+        if seen is not None:
+            seen.append(url)
+        if url.startswith(BASE):
+            return httpx.Response(302, headers={"location": redirect + "/" + url.rsplit("/", 1)[1]})
+        if url.endswith(".sha256"):
+            return httpx.Response(404) if checksum is None else httpx.Response(200, content=checksum.encode())
+        return httpx.Response(200, content=payload, headers={"content-length": str(len(payload))})
+    return httpx.Client(transport=httpx.MockTransport(handle))
+
+
+@pytest.fixture
+def install(tmp_path, monkeypatch):
+    monkeypatch.setattr(updates.paths, "app_home", lambda: tmp_path)
+    monkeypatch.setattr(sys, "platform", "win32")
+    launched = []
+    monkeypatch.setattr(updates, "_install_windows", lambda path: launched.append(path))
+    monkeypatch.setattr(updates, "_job", {"state": "downloading", "percent": 0, "error": None})
+    return tmp_path / "updates", launched
+
+
+def test_asset_name_by_platform():
+    assert updates.asset_name("1.2.3", "win32") == "AI-Voice-Setup-1.2.3.exe"
+    assert updates.asset_name("1.2.3", "darwin") == "AI-Voice-1.2.3.zip"
+    assert updates.asset_name("1.2.3", "linux") is None
+
+
+@pytest.mark.parametrize("url,ok", [
+    (BASE + "x.zip", True), (CDN, True), ("https://objects.githubusercontent.com/a", True),
+    ("http://github.com/coldmoth/ai-voice/releases/x", False),
+    ("https://github.com/other/repo/releases/x", False),
+    ("https://github.com/coldmoth/ai-voice/releases/../../evil", False),
+    ("https://evil.example/coldmoth/ai-voice/releases/x", False),
+    ("https://github.com.evil.example/coldmoth/ai-voice/releases/x", False),
+    ("https://release-assets.githubusercontent.com:8443/a", False),
+])
+def test_allowed_url(url, ok):
+    assert updates.allowed_url(url) is ok
+
+
+def test_install_verifies_hash_and_launches(install):
+    work, launched = install
+    seen = []
+    with asset_client(seen=seen) as client:
+        updates.run_install("9.0.0", client)
+    assert updates.job()["state"] == "installing"
+    assert launched == [work / "AI-Voice-Setup-9.0.0.exe"]
+    assert launched[0].read_bytes() == PAYLOAD
+    assert seen[0] == BASE + "AI-Voice-Setup-9.0.0.exe.sha256" and any(u.startswith(CDN) for u in seen)
+
+
+@pytest.mark.parametrize("kwargs,code", [
+    ({"checksum": "0" * 64}, "checksum"),
+    ({"checksum": None}, "no_checksum"),
+    ({"checksum": "not a hash"}, "no_checksum"),
+    ({"redirect": "https://evil.example/blob"}, "url"),
+    ({"redirect": "http://release-assets.githubusercontent.com/blob"}, "url"),
+])
+def test_install_refuses_and_cleans_up(install, kwargs, code):
+    work, launched = install
+    with asset_client(**kwargs) as client:
+        updates.run_install("9.0.0", client)
+    assert updates.job()["state"] == "error" and updates.job()["error"] == code
+    assert launched == [] and not work.exists()
+
+
+def test_install_too_large(install, monkeypatch):
+    work, launched = install
+    monkeypatch.setattr(updates, "MAX_BYTES", 10)
+    with asset_client() as client:
+        updates.run_install("9.0.0", client)
+    assert updates.job()["error"] == "too_large" and launched == [] and not work.exists()
+
+
+def test_install_unsupported_platform(install, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    updates.run_install("9.0.0", asset_client())
+    assert updates.job()["error"] == "unsupported"
+
+
+def test_one_job_at_a_time(monkeypatch):
+    monkeypatch.setattr(updates, "_job", {"state": "installing", "percent": 100, "error": None})
+    assert updates.start_install("9.0.0") is False
+
+
+def test_windows_launch_flags(monkeypatch):
+    calls = []
+    monkeypatch.setattr(updates.subprocess, "Popen", lambda args, **kw: calls.append(args))
+    updates._install_windows(Path("C:/x/Setup.exe"))
+    assert calls[0][0] == str(Path("C:/x/Setup.exe")) and "/SILENT" in calls[0] and "/RELAUNCH=1" in calls[0]
+    assert calls[1][0] == "taskkill" and "/T" not in calls[1]
+
+
+def test_macos_swap_script_launch(tmp_path, monkeypatch):
+    target = tmp_path / "apps" / "AI Voice.app"
+    target.mkdir(parents=True)
+    work = tmp_path / "work"
+    work.mkdir()
+
+    def fake_run(args, **kw):
+        if args[0] == "ditto":
+            (Path(args[-1]) / "AI Voice.app").mkdir()
+        return subprocess.CompletedProcess(args, 0)
+
+    popen, killed = [], []
+    monkeypatch.setattr(updates.subprocess, "run", fake_run)
+    monkeypatch.setattr(updates.subprocess, "Popen", lambda args, **kw: popen.append((args, kw)))
+    monkeypatch.setattr(updates.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    updates._install_macos(tmp_path / "a.zip", work, target)
+    args, kw = popen[0]
+    assert args[:2] == ["/bin/bash", str(work / "swap.sh")] and args[5] == str(target) and kw["start_new_session"]
+    assert Path(args[4]).name == "AI Voice.app" and Path(args[6]).parent == target.parent
+    assert killed == [(updates.os.getppid(), updates.signal.SIGTERM)]
+
+
+def test_macos_unwritable_folder(tmp_path, monkeypatch):
+    def deny(**kw):
+        raise PermissionError
+    monkeypatch.setattr(updates.tempfile, "mkdtemp", deny)
+    with pytest.raises(updates.UpdateError) as caught:
+        updates._install_macos(tmp_path / "a.zip", tmp_path, tmp_path / "AI Voice.app")
+    assert caught.value.code == "not_writable"
+
+
+def test_target_app_from_bundle_path(monkeypatch):
+    monkeypatch.setattr(updates.paths, "ROOT", Path("/Applications/AI Voice.app/Contents/Resources/app"))
+    assert updates._target_app() == Path("/Applications/AI Voice.app")
+    monkeypatch.setattr(updates.paths, "ROOT", Path("/opt/dev/ai-voice"))
+    with pytest.raises(updates.UpdateError):
+        updates._target_app()

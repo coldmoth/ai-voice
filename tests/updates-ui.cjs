@@ -8,7 +8,7 @@ const shots = path.join(root, 'state/research/ui-qa');
 const dictionaries = Object.fromEntries(['en', 'ru'].map(lang => [lang,
   JSON.parse(fs.readFileSync(path.join(root, `src/ai_voice/locales/${lang}.json`), 'utf8'))]));
 const release = {status: 'available', version: '0.10.0', url: 'https://github.com/coldmoth/ai-voice/releases/tag/v0.10.0'};
-let prefs, posts, result, checkCode, pendingCheck, holdCheck, version, checkArrived;
+let job = {state: 'idle', percent: 0, error: null}, prefs, posts, result, checkCode, pendingCheck, holdCheck, version, checkArrived;
 function reset(language = 'en', onboarding = false) {
   prefs = {language, catalog_language: language, speech_language: 'en-US', asr_engine: 'apple', favorite_ids: [],
     input_device: null, output_device: null, onboarding_completed: !onboarding, update_auto: true};
@@ -31,6 +31,8 @@ const server = http.createServer(async (req, res) => {
     if (holdCheck && body.force) { pendingCheck = () => reply(result, checkCode); checkArrived(); return; }
     return reply(result, checkCode);
   }
+  if (url.pathname === '/api/update-install') return reply({ok: true});
+  if (url.pathname === '/api/update-status') return reply(job);
   if (url.pathname === '/api/update-skip') return reply({ok: true});
   if (url.pathname === '/api/status') return reply({version, active: false, state: 'stopped', mode: 'mic', message: 'Stopped'});
   if (url.pathname === '/api/keys') return reply({fish: false, hf: false});
@@ -150,6 +152,39 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.locator('#update-banner script, #update-version script, #update-check-status script').count(), 0);
     assert.equal(await page.evaluate(() => window.updateInjected), undefined);
 
+    // Install button: progress labels, error + retry; the banner nodes are never rebuilt.
+    {
+      const en = dictionaries.en, install = page.locator('#update-install'), text = page.locator('#update-banner-text');
+      const label = async value => page.waitForFunction(v => document.querySelector('#update-install').textContent === v, value);
+      const installs = () => posts.filter(p => p.path === '/api/update-install');
+      job = {state: 'idle', percent: 0, error: null};
+      reset(); await load(); await banner.waitFor({state: 'visible'});
+      assert.equal(await install.textContent(), en['update.banner.install']);
+      await page.evaluate(() => { window.__nodes = [document.querySelector('#update-install'), document.querySelector('#update-banner-text'), document.querySelector('#update-banner')]; });
+      job = {state: 'downloading', percent: 42, error: null};
+      await install.click();
+      await label(en['update.banner.downloading'].replace('{percent}', '42'));
+      assert.equal(installs().length, 1);
+      assert.equal(await install.isDisabled(), true);
+      assert.equal(await page.locator('#update-skip').isDisabled(), true);
+      assert.equal(await page.locator('#update-close').isDisabled(), true);
+      job = {state: 'installing', percent: 100, error: null};
+      await label(en['update.banner.installing']);
+      job = {state: 'error', percent: 0, error: 'checksum'};
+      await label(en['update.banner.retry']);
+      assert.equal(await text.textContent(), en['update.error.checksum']);
+      assert.equal(await install.isDisabled(), false);
+      assert.equal(await page.locator('#update-skip').isDisabled(), false);
+      assert.equal(await page.locator('#update-download').isVisible(), true);
+      job = {state: 'downloading', percent: 5, error: null};
+      await install.click();
+      await label(en['update.banner.downloading'].replace('{percent}', '5'));
+      assert.equal(installs().length, 2);
+      assert.equal(await page.evaluate(() => window.__nodes[0] === document.querySelector('#update-install')
+        && window.__nodes[1] === document.querySelector('#update-banner-text') && window.__nodes[2] === document.querySelector('#update-banner')), true);
+      job = {state: 'idle', percent: 0, error: null};
+    }
+
     // EN/RU banner and General screenshots at reviewer sizes; explicit 900 px overflow check.
     fs.mkdirSync(shots, {recursive: true});
     let screenshots = 0;
@@ -160,6 +195,7 @@ const server = http.createServer(async (req, res) => {
       assert.equal(await page.locator('#update-banner-text').textContent(), dict['update.banner.text'].replace('{version}', release.version));
       assert.equal(await page.locator('#update-download').textContent(), dict['update.banner.download']);
       assert.equal(await page.locator('#update-skip').textContent(), dict['update.banner.skip']);
+      assert.equal(await page.locator('#update-install').textContent(), dict['update.banner.install']);
       const overflow = async () => page.evaluate(() => {
         const nodes = [document.documentElement, document.querySelector('#update-banner'), document.querySelector('[data-pane="general"]')];
         return nodes.filter(n => n.getClientRects().length).map(n => ({id: n.id || n.tagName, overflow: n.scrollWidth - n.clientWidth}));

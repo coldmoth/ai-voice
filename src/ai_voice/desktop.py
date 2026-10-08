@@ -202,6 +202,8 @@ class DesktopHandler(BaseHTTPRequestHandler):
                 except FutureTimeout:
                     future.cancel()
                     return self.respond(200, dict(asr._UNKNOWN_PERMISSIONS))
+            if path.path == "/api/update-status":
+                return self.respond(200, updates.job())
             if path.path == "/api/driver/status":
                 names = [d["name"] for d in list_devices() if d.get("max_output_channels", 0) >= 2]
                 return self.respond(200, driver.status(names))
@@ -339,6 +341,13 @@ class DesktopHandler(BaseHTTPRequestHandler):
                 if new_state != state:
                     self.server.catalog.set_update_state(new_state)
                 return self.respond(200, result)
+            if path == "/api/update-install":
+                latest = self.server.catalog.update_state()["latest"]
+                if latest is None or not updates.is_newer(latest["version"], __version__):
+                    return self.respond(400, {"error": t("errors.update_unavailable")})
+                if not updates.start_install(latest["version"]):
+                    return self.respond(409, {"error": t("errors.update_busy")})
+                return self.respond(200, {"ok": True})
             if path == "/api/update-skip":
                 version = data.get("version")
                 if updates.parse_version(version) is None:

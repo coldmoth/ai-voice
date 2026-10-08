@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-10-09
+
+### Added
+
+- In-app update: the "update available" banner has an Update button that downloads the release, verifies its SHA256, installs it and restarts the app (macOS: app bundle swap; Windows: silent Inno Setup installer).
+
+### Fixed
+
+- macOS: Start now asks for undecided microphone and speech recognition permissions instead of showing an error.
+
 ## [0.4.7] - 2026-10-09
 
 ### Fixed

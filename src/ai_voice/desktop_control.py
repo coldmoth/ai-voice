@@ -578,7 +578,12 @@ class DesktopControl:
                 _devices(config)
                 engine = prefs.get("asr_engine", "apple")
                 asr = _helper(config, engine)
-                _permissions(await asr.doctor(), engine, app=True)
+                report = await asr.doctor()
+                # Ask for what was never decided (system dialog) instead of sending the user to Settings.
+                for kind, key in (("microphone", "microphone_authorization"), ("speech", "speech_authorization")):
+                    if report.get(key) == "notDetermined" and (kind == "microphone" or engine != "gigaam"):
+                        report = await asr.authorize_only(kind)
+                _permissions(report, engine, app=True)
             else:
                 resolve_output(config.output_device)
 

@@ -40,6 +40,8 @@ Type: filesandordirs; Name: "{app}"
 
 [Run]
 Filename: "{app}\python\pythonw.exe"; Parameters: "-X utf8 -m ai_voice.winshell"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent; Description: "Launch AI Voice"
+; In-app update: the silent installer started by AI Voice passes /RELAUNCH=1.
+Filename: "{app}\python\pythonw.exe"; Parameters: "-X utf8 -m ai_voice.winshell"; WorkingDir: "{app}"; Flags: nowait; Check: RelaunchRequested
 
 ; User data and the VC runtime live outside {app} and survive uninstall.
 [CustomMessages]
@@ -59,6 +61,11 @@ begin
     Result := RegQueryStringValue(HKCU32, Key, 'pv', Version);
     Result := Result and (Version <> '') and (Version <> '0.0.0.0');
   end;
+end;
+
+function RelaunchRequested: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
 end;
 
 function InitializeSetup: Boolean;

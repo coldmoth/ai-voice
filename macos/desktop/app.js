@@ -1946,7 +1946,7 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
   let updateRelease = null, updateResult = null, updateChecking = false, updateStatusTimer = null;
   const UPDATE_ERRORS = {network:'update.settings.error_network', github:'update.settings.error_github'};
   function renderUpdateCopy() {
-    if (updateRelease) $('#update-banner-text').textContent = t('update.banner.text', {version:updateRelease.version});
+    renderUpdateInstall();
     $('#update-check-btn').textContent = t(updateChecking ? 'update.settings.checking' : 'update.settings.check');
     const status = $('#update-check-status');
     status.textContent = '';
@@ -1954,6 +1954,30 @@ function buildKeyForm({kind, connected, idPrefix, onChange, onCancel}) {
     else if (updateResult?.status === 'available') status.textContent = t('update.settings.available', {version:updateResult.version});
     else if (updateResult?.status === 'error') status.textContent = t(UPDATE_ERRORS[updateResult.error] || UPDATE_ERRORS.network);
   }
+  // Install: poll the job and touch only text/disabled, never rebuild the banner.
+  let updateJob = {state:'idle'}, updatePollTimer = null;
+  function renderUpdateInstall() {
+    const busy = updateJob.state === 'downloading' || updateJob.state === 'installing';
+    const button = $('#update-install'), text = $('#update-banner-text');
+    button.disabled = busy;
+    $('#update-skip').disabled = busy; $('#update-close').disabled = busy;
+    if (updateJob.state === 'downloading') button.textContent = t('update.banner.downloading', {percent:updateJob.percent || 0});
+    else if (updateJob.state === 'installing') button.textContent = t('update.banner.installing');
+    else button.textContent = t(updateJob.state === 'error' ? 'update.banner.retry' : 'update.banner.install');
+    if (updateJob.state === 'error') text.textContent = t(`update.error.${updateJob.error}`);
+    else if (updateRelease) text.textContent = t('update.banner.text', {version:updateRelease.version});
+  }
+  async function pollUpdate() {
+    clearTimeout(updatePollTimer);
+    try { updateJob = await api('/api/update-status'); } catch { updateJob = {state:'error', error:'network'}; }
+    renderUpdateInstall();
+    if (updateJob.state === 'downloading' || updateJob.state === 'installing') updatePollTimer = setTimeout(pollUpdate, 500);
+  }
+  $('#update-install').addEventListener('click', async () => {
+    updateJob = {state:'downloading', percent:0}; renderUpdateInstall();
+    try { await api('/api/update-install', {}); } catch (error) { updateJob = {state:'error', error:'failed'}; renderUpdateInstall(); showToast(error.message); return; }
+    pollUpdate();
+  });
   function showUpdate(result) {
     updateRelease = result;
     $('#update-download').href = result.url;

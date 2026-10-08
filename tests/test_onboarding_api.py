@@ -543,7 +543,7 @@ def test_update_check_endpoint(update_bridge, monkeypatch):
 
 
 @pytest.mark.parametrize("path,payload", [
-    ("/api/update-check", {}), ("/api/update-skip", {"version": "1.2.3"}),
+    ("/api/update-check", {}), ("/api/update-skip", {"version": "1.2.3"}), ("/api/update-install", {}),
 ])
 def test_update_endpoints_require_token(update_bridge, path, payload):
     server, request = update_bridge
@@ -666,3 +666,16 @@ def test_update_state_copies_and_save_failure(tmp_path, monkeypatch):
 def test_window_drag_covers_onboarding():
     swift = (Path(__file__).resolve().parents[1] / "macos" / "Desktop.swift").read_text()
     assert "'.n-toolbar,.n-traffic-spacer,.ob'" in swift
+
+
+def test_update_install_route(update_bridge, monkeypatch):
+    from ai_voice import updates
+    server, request = update_bridge
+    started = []
+    monkeypatch.setattr(updates, "start_install", lambda version: started.append(version) or len(started) == 1)
+    assert request("POST", "/api/update-install", {})[0] == 400 and started == []  # nothing newer known
+    url = updates.RELEASE_URL_PREFIX + "tag/v9.0.0"
+    server.catalog.set_update_state({**server.catalog.update_state(), "latest": {"version": "9.0.0", "url": url}})
+    assert request("POST", "/api/update-install", {})[0] == 200 and started == ["9.0.0"]
+    assert request("POST", "/api/update-install", {})[0] == 409
+    assert request("GET", "/api/update-status")[0] == 200
