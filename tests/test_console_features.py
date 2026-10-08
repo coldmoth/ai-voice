@@ -182,7 +182,7 @@ async def test_start_resolves_devices_without_saving_defaults(tmp_path, monkeypa
     monkeypatch.setattr(control_module, "_config", lambda slug: mod("config").Config(voice=slug))
     monkeypatch.setattr(control_module, "load_key", lambda: "test-key")
     monkeypatch.setattr(control_module, "_helper", lambda *a: SimpleNamespace(doctor=AsyncMock(return_value={})))
-    monkeypatch.setattr(control_module, "_permissions", lambda *a: None)
+    monkeypatch.setattr(control_module, "_permissions", lambda *a, **k: None)
     lease = MagicMock()
     monkeypatch.setattr(control_module, "AudioLease", lambda: lease)
 
@@ -238,7 +238,7 @@ async def test_start_passes_speech_language(tmp_path, monkeypatch, supported, ex
     monkeypatch.setattr(control_module, "_config", lambda slug: mod("config").Config(voice=slug))
     monkeypatch.setattr(control_module, "load_key", lambda: "test-key")
     monkeypatch.setattr(control_module, "_devices", lambda *a: None)
-    monkeypatch.setattr(control_module, "_permissions", lambda *a: None)
+    monkeypatch.setattr(control_module, "_permissions", lambda *a, **k: None)
     monkeypatch.setattr(control_module, "AudioLease", MagicMock)
     helpers = []
 

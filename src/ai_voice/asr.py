@@ -3,6 +3,7 @@ import asyncio
 import base64
 from collections.abc import AsyncIterator, Sequence
 import json
+import logging
 import math
 from pathlib import Path
 import tempfile
@@ -18,6 +19,8 @@ import numpy as np
 
 from .i18n import t
 from .paths import HELPER_BINARY
+
+log = logging.getLogger(__name__)
 
 
 LOCALES_FALLBACK = {"system": "en-US", "supported": ["en-US", "ru-RU"]}
@@ -537,10 +540,13 @@ def load_gigaam(name: str = GIGAAM_MODEL):
         except ImportError as exc:
             raise ASRError(t("errors.gigaam_install")) from exc
         try:
+            # Windowed app has no valid stderr; HF's tqdm progress bar then fails with [Errno 22].
+            os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
             model = onnx_asr.load_model(name, quantization="int8")
             model.recognize(np.zeros(16000, dtype=np.float32), sample_rate=16000)  # warm-up: first call compiles ~4 s
             _models[name] = model
         except Exception as exc:
+            log.exception("GigaAM load failed")
             raise ASRError(t("errors.gigaam_load", exc=exc)) from exc
     return _models[name]
 

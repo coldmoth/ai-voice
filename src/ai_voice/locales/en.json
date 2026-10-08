@@ -143,6 +143,7 @@
   "errors.active_voice_switch": "Could not switch the active voice: {exc}",
   "errors.add_voice_first": "Add this voice from the catalog with the + button first.",
   "errors.all_voices": "Cannot delete all voices: keep at least one.",
+  "errors.app_permissions": "Microphone or speech recognition permission is missing. Open System Settings → Privacy & Security → Microphone (and Speech Recognition), enable AI Voice, then press Start again.",
   "errors.asr_engine_invalid": "Recognition engine must be apple or gigaam.",
   "errors.audio_connection": "Connection to the audio process was lost. Restart AI Voice.",
   "errors.audio_file_required": "Add at least one audio file.",

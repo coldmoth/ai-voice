@@ -61,11 +61,11 @@ def _helper(config, engine="apple"):
                endpoint_ms=config.endpoint_ms)
 
 
-def _permissions(report, engine="apple"):
+def _permissions(report, engine="apple", app=False):
     apple = engine != "gigaam"
     names = ("microphone_authorization", "speech_authorization") if apple else ("microphone_authorization",)
     if any(report.get(name) != "authorized" for name in names):
-        raise RuntimeError(t("errors.cli_permissions", command=AUTHORIZE))
+        raise RuntimeError(t("errors.app_permissions") if app else t("errors.cli_permissions", command=AUTHORIZE))
     if apple and (not report.get("supports_on_device") or not report.get("available")):
         raise RuntimeError(t("errors.cli_local_asr"))
     if not report.get("input_found"):

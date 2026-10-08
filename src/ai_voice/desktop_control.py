@@ -578,7 +578,7 @@ class DesktopControl:
                 _devices(config)
                 engine = prefs.get("asr_engine", "apple")
                 asr = _helper(config, engine)
-                _permissions(await asr.doctor(), engine)
+                _permissions(await asr.doctor(), engine, app=True)
             else:
                 resolve_output(config.output_device)
 

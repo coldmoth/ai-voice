@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-10-09
+
+### Fixed
+
+- Windows: GigaAM failed to load with `[Errno 22] Invalid argument` (download progress bar in a windowed app); load errors are now logged with a traceback.
+- macOS: the missing-permission message now points to System Settings instead of a console command.
+
 ## [0.4.6] - 2026-10-07
 
 ### Added
