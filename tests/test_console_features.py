@@ -244,12 +244,14 @@ async def test_start_passes_speech_language(tmp_path, monkeypatch, supported, ex
 
     def helper(config, engine):
         instance = mod("asr").SpeechASR(language=config.language)
-        instance.doctor = AsyncMock(return_value={})
+        instance.doctor = AsyncMock(return_value={"speech_authorization": "notDetermined"})
+        instance.authorize_only = AsyncMock(return_value={})
         helpers.append(instance)
         return instance
 
     class Session:
         def __init__(self, config, key, **kwargs):
+            self.key = key
             self.engine = SimpleNamespace(config=config, buffer=SimpleNamespace(clear=lambda: None))
             self.ready = asyncio.Event()
 
@@ -266,6 +268,7 @@ async def test_start_passes_speech_language(tmp_path, monkeypatch, supported, ex
     try:
         await control.start("mic", TEST_VOICE_ID, "MIC", "AI Voice")
         assert helpers[0].language == expected
+        assert control.session.key == "test-key"  # permission loop must not overwrite the Fish key
         assert control.session.engine.config.language == expected
         assert cat.preferences()["speech_language"] == "de-DE"
     finally:

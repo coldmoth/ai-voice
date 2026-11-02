@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.9] - 2026-11-02
+
+### Fixed
+
+- Windows: microphone selection resolves saved device names across host APIs and prefers WASAPI inputs, preventing PortAudio error `-9996`.
+- Windows: device dropdowns follow the app's dark theme in WebView2.
+- Start no longer overwrites the Fish API key while checking permissions, preventing HTTP 401 errors on macOS and Windows.
+
+### Added
+
+- Desktop session errors are logged with tracebacks in `logs/app.log` (Windows: `%APPDATA%\AI Voice\logs\app.log`).
+
 ## [0.4.8] - 2026-10-09
 
 ### Added

@@ -13,7 +13,7 @@ import httpx
 from .asr import ASRError, GigaAMASR, SpeechASR, WhisperASR, engine_for_language
 from .config import Config
 from .catalog import Catalog
-from .devices import list_devices, resolve_output
+from .devices import list_devices, resolve_input, resolve_output
 from .fish_tts import FishTTS, TTSError
 from .pipeline import SpeechPipeline
 from .secrets import load_key, migrate_legacy
@@ -46,7 +46,8 @@ def _config(voice=None):
 def _devices(config):
     devices = list_devices()
     inputs = [d for d in devices if d["name"] == config.input_device and d["max_input_channels"] > 0]
-    if len(inputs) != 1:
+    # Windows lists one mic under several host APIs; resolve_input picks the right one.
+    if len(inputs) != 1 and not (sys.platform == "win32" and isinstance(resolve_input(config.input_device), int)):
         raise RuntimeError(t("errors.cli_input_ambiguous", device=repr(config.input_device)))
     resolve_output(config.output_device)
 

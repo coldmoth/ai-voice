@@ -26,7 +26,8 @@ class InputMeter:
         self.stop()
         stream = None
         try:
-            from .devices import stream_extra_settings
+            from .devices import resolve_input, stream_extra_settings
+            device = resolve_input(device)
             if self.sd is None:
                 import sounddevice
                 self.sd = sounddevice

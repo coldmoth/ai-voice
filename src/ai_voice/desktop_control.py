@@ -1,6 +1,7 @@
 """One audio owner and serialized desktop commands; no capture on startup."""
 import asyncio
 import collections
+import logging
 import time
 from dataclasses import replace
 import math
@@ -368,6 +369,7 @@ class DesktopControl:
             self.notify("stopped")
         else:
             exc = task.exception()
+            logging.getLogger(__name__).warning("Session ended: %r", exc, exc_info=exc)
             self.notify("error", str(exc) if exc else t("status.audio_process_ended"))
 
     def _on_input_gain_changed(self, db):
@@ -580,8 +582,8 @@ class DesktopControl:
                 asr = _helper(config, engine)
                 report = await asr.doctor()
                 # Ask for what was never decided (system dialog) instead of sending the user to Settings.
-                for kind, key in (("microphone", "microphone_authorization"), ("speech", "speech_authorization")):
-                    if report.get(key) == "notDetermined" and (kind == "microphone" or engine != "gigaam"):
+                for kind, field in (("microphone", "microphone_authorization"), ("speech", "speech_authorization")):
+                    if report.get(field) == "notDetermined" and (kind == "microphone" or engine != "gigaam"):
                         report = await asr.authorize_only(kind)
                 _permissions(report, engine, app=True)
             else:

@@ -7,6 +7,7 @@ __pycache__/
 *.egg-info/
 .DS_Store
 .superpowers/
+.local/
 build/
 /AI Voice.app/
 models/

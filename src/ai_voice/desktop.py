@@ -21,7 +21,7 @@ from .catalog import Catalog, _is_monitor_blacklisted, resolve_speech_language, 
 from .paths import DATA, WEB
 from .storage import StorageBadRequest, StorageConflict, StorageService, cleanup_old_logs
 from .desktop_control import ConflictError, DesktopControl, NotFoundError
-from .devices import default_input_name, list_devices, preferred_virtual_output, virtual_outputs
+from .devices import default_input_name, list_devices, preferred_virtual_output, virtual_outputs, input_listed
 from .vc_control import VcController
 from .vc_store import VcStore, VcStoreError
 from .hf_catalog import HfCatalogError
@@ -143,7 +143,7 @@ class DesktopHandler(BaseHTTPRequestHandler):
                     name = device.get("name")
                     if not isinstance(name, str) or not name:
                         continue
-                    if device.get("max_input_channels", 0) >= 1 and name not in devices["inputs"]:
+                    if device.get("max_input_channels", 0) >= 1 and name not in devices["inputs"] and input_listed(device):
                         devices["inputs"].append(name)
                     if device.get("max_output_channels", 0) >= 2 and name not in devices["outputs"]:
                         devices["outputs"].append(name)
@@ -615,6 +615,14 @@ def main():
             raise ValueError(t("errors.storage_delete")) from None
     server.storage = StorageService(vc=server.vc, control=server.control, catalog=catalog, run_async=run_async)
     cleanup_old_logs(DATA / "logs")
+    try:
+        (DATA / "logs").mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(filename=DATA / "logs" / "app.log", encoding="utf-8", level=logging.INFO,
+                            format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+    except OSError:
+        pass
     server.token = secrets.token_urlsafe(32)
     print(json.dumps({"url": f"http://127.0.0.1:{server.server_port}/?token={server.token}"}), flush=True)
     stopped = threading.Event()

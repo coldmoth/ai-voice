@@ -2035,3 +2035,7 @@ body[data-mode="vc"] .vc-head { display: block; }
 .update-banner a { display: inline-flex; align-items: center; text-decoration: none; }
 .update-check-row { grid-template-columns: auto minmax(0, 1fr); }
 #update-check-status { color: var(--text-2); overflow-wrap: anywhere; }
+
+/* Native popup list follows the system theme (WebView2 otherwise draws white-on-white). */
+:root { color-scheme: light dark; }
+select option { background-color: Canvas; color: CanvasText; }

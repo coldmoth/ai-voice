@@ -377,7 +377,7 @@ class SpeechASR:
 
     async def _capture_events(self, gain_db: float) -> AsyncIterator[dict]:
         import sounddevice as sd
-        from .devices import stream_extra_settings
+        from .devices import resolve_input, stream_extra_settings
         from .vad import VAD
 
         loop = asyncio.get_running_loop()
@@ -421,7 +421,7 @@ class SpeechASR:
                     "time_ms": time.monotonic() * 1000, **fields}
 
         try:
-            device = None if self.input_device == "default" else self.input_device
+            device = None if self.input_device == "default" else resolve_input(self.input_device)
             with sd.InputStream(samplerate=16000, channels=1, dtype="float32",
                                 device=device,
                                 extra_settings=stream_extra_settings(device, kind="input"),

@@ -74,3 +74,34 @@ def resolve_output(name: str) -> int:
     if len(matches) != 1:
         raise ValueError(f"Output device {name!r} is missing or ambiguous; run ai-voice devices")
     return matches[0]["index"]
+
+
+def resolve_input(name):
+    """Input index by name; on Windows skip WDM-KS (invalid for capture) and prefer WASAPI. Unknown name -> unchanged."""
+    if name is None or isinstance(name, int):
+        return name
+    try:
+        matches = [d for d in list_devices() if d["name"] == name and d["max_input_channels"] > 0]
+        if sys.platform == "win32" and matches:
+            hostapis = sd.query_hostapis()
+            matches = [d for d in matches if "wdm-ks" not in hostapis[d["hostapi"]]["name"].lower()]
+            matches.sort(key=lambda d: "wasapi" not in hostapis[d["hostapi"]]["name"].lower())
+        if not matches and sys.platform == "win32":
+            # Stale WDM-KS name ("Analogue 1/2 (Analogue 1/2)"): match the WASAPI twin by the part before " (".
+            base = name.split(" (")[0]
+            matches = [d for d in list_devices() if d["max_input_channels"] > 0
+                       and d["name"].split(" (")[0] == base
+                       and "wasapi" in sd.query_hostapis(d["hostapi"])["name"].lower()]
+        return matches[0]["index"] if matches else name
+    except Exception:
+        return name
+
+
+def input_listed(device) -> bool:
+    """Windows lists WASAPI inputs only: MME/DirectSound/WDM-KS repeat each mic with truncated names."""
+    if sys.platform != "win32":
+        return True
+    try:
+        return "wasapi" in sd.query_hostapis(device["hostapi"])["name"].lower()
+    except Exception:
+        return True
